@@ -1,0 +1,11 @@
+/* Simple Omni Automation plugin script */
+(() => {
+  var action = new PlugIn.Action(function(selection, sender){
+    new Alert("Hello from sample_plugin.omnijs!", "This plugin demonstrates a simple alert.").show();
+  });
+  action.validate = function(selection, sender){
+    return true;
+  };
+  return action;
+})();
+

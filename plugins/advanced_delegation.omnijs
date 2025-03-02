@@ -1,0 +1,21 @@
+/* Example advanced delegation logic: could call an external API, or auto-assign tags. */
+(() => {
+  var action = new PlugIn.Action(function(selection, sender){
+    let tasks = selection.tasks;
+    if (tasks.length === 0) {
+      new Alert("No tasks selected", "Please select at least one task to delegate.").show();
+      return;
+    }
+    tasks.forEach(task => {
+      // Example: add a "Waiting" tag
+      let waitingTag = flattenedTags.byName("Waiting") || new Tag("Waiting");
+      task.addTag(waitingTag);
+    });
+    new Alert("Delegation Complete", `Tagged ${tasks.length} tasks as 'Waiting'.`).show();
+  });
+  action.validate = function(selection, sender){
+    return true;
+  };
+  return action;
+})();
+
