@@ -35,6 +35,10 @@ def main():
     prioritize_parser.add_argument("--project", "-p", help="Project to focus on.")
     prioritize_parser.add_argument("--limit", "-l", type=int, default=10,
                                    help="Number of tasks to include in AI prioritization.")
+    prioritize_parser.add_argument("--finance", "-f", action="store_true",
+                                  help="Focus on organizing and simplifying finance-related tasks.")
+    prioritize_parser.add_argument("--deduplicate", "-d", action="store_true",
+                                  help="Find and suggest consolidation of duplicate tasks.")
 
     # Delegation Command
     delegation_parser = subparsers.add_parser("delegate", help="Delegate tasks to someone else.")

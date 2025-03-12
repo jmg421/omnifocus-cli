@@ -80,11 +80,15 @@ def complete(
 def prioritize(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project to focus on."),
     limit: int = typer.Option(10, "--limit", "-l", help="Number of tasks to include in AI prioritization."),
+    finance: bool = typer.Option(False, "--finance", "-f", help="Focus on organizing and simplifying finance-related tasks."),
+    deduplicate: bool = typer.Option(False, "--deduplicate", "-d", help="Find and suggest consolidation of duplicate tasks."),
 ):
     """Use AI to prioritize tasks in OmniFocus."""
     args = type('Args', (), {
         'project': project,
-        'limit': limit
+        'limit': limit,
+        'finance': finance,
+        'deduplicate': deduplicate
     })
     handle_prioritize(args)
 

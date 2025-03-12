@@ -12,6 +12,7 @@ class OmniFocusTask:
     note: str
     completed: bool
     due_date: Optional[str] = None
+    project: Optional[str] = None
 
     def to_dict(self):
         return {
@@ -19,6 +20,7 @@ class OmniFocusTask:
             "name": self.name,
             "note": self.note,
             "completed": self.completed,
-            "due_date": self.due_date
+            "due_date": self.due_date,
+            "project": self.project
         }
 
