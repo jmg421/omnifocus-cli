@@ -2,7 +2,7 @@
 openai==1.0.0            # For AI-based prioritization (GPT-4)
 anthropic==0.3.1         # For AI-based decision-making (Claude)
 requests>=2.28.0         # For API requests to AI services
-typer>=0.6.1             # For building CLI interactions
+typer>=0.9.0             # For building CLI interactions
 python-dotenv>=1.0.0     # For managing API keys and config via .env files
 
 # Optional dependencies (for advanced parsing & formatting)
@@ -16,3 +16,6 @@ pytest-mock>=3.10.0     # For mocking dependencies in tests
 
 # AppleScript integration (Mac-only)
 appscript>=1.2.5        # If you prefer direct Python control over AppleScript (alternative to subprocess)
+
+# Evernote SDK
+evernote3>=1.25.0

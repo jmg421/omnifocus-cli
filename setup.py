@@ -31,6 +31,8 @@ setup(
         "rich>=13.5.2",
         "loguru>=0.6.0",
         "appscript>=1.2.5",
+        "icalendar>=5.0.0",
+        "recurring-ical-events>=2.1.0",
     ],
     entry_points={
         "console_scripts": [
