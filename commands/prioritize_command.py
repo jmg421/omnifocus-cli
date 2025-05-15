@@ -1,10 +1,44 @@
-from omnifocus_api import apple_script_client
-from ai_integration import ai_utils
-from ai_integration.utils.format_utils import format_priority_recommendations
-from ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
+from ..omnifocus_api import apple_script_client
+from ..omnifocus_api.data_models import OmniFocusTask
+from ..ai_integration import ai_utils
+from ..ai_integration.utils.format_utils import format_priority_recommendations
+from ..ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
 import os
 import re
 from datetime import datetime
+from typing import List, Optional
+
+def get_tasks_for_prioritization(project_name: Optional[str], limit: Optional[int], finance_focus: bool) -> List[OmniFocusTask]:
+    """Fetches tasks from OmniFocus based on project, limit, or finance focus."""
+    tasks: List[OmniFocusTask] = []
+    # Get tasks from OmniFocus
+    if finance_focus:
+        print("Getting finance-related tasks from OmniFocus...")
+        # First try to get tasks from a Finance project if it exists
+        tasks = apple_script_client.fetch_tasks(project_name="Finance")
+
+        # If no Finance project, look for tasks with finance-related keywords
+        if not tasks:
+            print("No 'Finance' project found. Searching for finance-related tasks...")
+            all_tasks = apple_script_client.fetch_tasks()
+            finance_keywords = ["finance", "budget", "money", "expense", "investment",
+                              "tax", "banking", "financial", "account"]
+
+            tasks = []
+            for task in all_tasks:
+                # Check if task contains finance keywords
+                task_text = f"{task.name} {task.note}".lower()
+                if any(keyword in task_text for keyword in finance_keywords):
+                    tasks.append(task)
+    else:
+        print(f"Getting tasks from OmniFocus{' for project: ' + project_name if project_name else ''}...")
+        tasks = apple_script_client.fetch_tasks(project_name=project_name)
+
+    # Limit the number of tasks if needed
+    if limit and len(tasks) > limit:
+        tasks = tasks[:limit]
+
+    return tasks
 
 def handle_prioritize(args):
     """
@@ -16,32 +50,8 @@ def handle_prioritize(args):
     focus_on_finance = args.finance
     deduplicate = args.deduplicate
     
-    # Get tasks from OmniFocus
-    if focus_on_finance:
-        print("Getting finance-related tasks from OmniFocus...")
-        # First try to get tasks from a Finance project if it exists
-        tasks = apple_script_client.fetch_tasks(project_name="Finance")
-        
-        # If no Finance project, look for tasks with finance-related keywords
-        if not tasks:
-            print("No 'Finance' project found. Searching for finance-related tasks...")
-            all_tasks = apple_script_client.fetch_tasks()
-            finance_keywords = ["finance", "budget", "money", "expense", "investment", 
-                              "tax", "banking", "financial", "account"]
-            
-            tasks = []
-            for task in all_tasks:
-                # Check if task contains finance keywords
-                task_text = f"{task.name} {task.note}".lower()
-                if any(keyword in task_text for keyword in finance_keywords):
-                    tasks.append(task)
-    else:
-        print(f"Getting tasks from OmniFocus{' for project: ' + project_name if project_name else ''}...")
-        tasks = apple_script_client.fetch_tasks(project_name=project_name)
-    
-    # Limit the number of tasks if needed
-    if limit and len(tasks) > limit:
-        tasks = tasks[:limit]
+    # Fetch tasks using the new helper function
+    tasks = get_tasks_for_prioritization(project_name, limit, focus_on_finance)
     
     if not tasks:
         print("No tasks found to prioritize.")

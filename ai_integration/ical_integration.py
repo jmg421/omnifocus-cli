@@ -4,7 +4,9 @@ import recurring_ical_events
 import datetime
 import requests
 from dataclasses import dataclass
-from omnifocus_api.data_models import OmniFocusTask
+from ..omnifocus_api.data_models import OmniFocusTask
+from icalendar import Calendar
+from datetime import timedelta
 
 @dataclass
 class CalendarEvent:
@@ -18,7 +20,7 @@ class CalendarEvent:
 def fetch_calendar_events(ical_url: str, start_date: datetime.datetime, end_date: datetime.datetime) -> List[CalendarEvent]:
     """Fetch events from an iCal calendar subscription."""
     response = requests.get(ical_url)
-    calendar = icalendar.Calendar.from_ical(response.text)
+    calendar = Calendar.from_ical(response.text)
     
     # Get all events including recurring ones
     events = recurring_ical_events.of(calendar).between(start_date, end_date)

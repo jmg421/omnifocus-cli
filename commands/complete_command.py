@@ -1,4 +1,4 @@
-from omnifocus_api import apple_script_client
+from ..omnifocus_api import apple_script_client
 
 def handle_complete(args):
     """

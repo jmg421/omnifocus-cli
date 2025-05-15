@@ -1,7 +1,9 @@
 import datetime
 from typing import List
-from omnifocus_api import apple_script_client
-from ai_integration.ical_integration import fetch_calendar_events, sync_with_calendar
+import requests
+import icalendar
+from ..omnifocus_api import apple_script_client
+from ..ai_integration.ical_integration import fetch_calendar_events, sync_with_calendar
 
 def handle_calendar(args):
     """

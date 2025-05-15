@@ -1,6 +1,6 @@
 import json
-from omnifocus_api import apple_script_client
-from ai_integration.utils.format_utils import format_task_list
+from ..omnifocus_api import apple_script_client
+from ..ai_integration.utils.format_utils import format_task_list
 
 def handle_list(args):
     """

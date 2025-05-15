@@ -1,5 +1,5 @@
-from omnifocus_api import apple_script_client
-from ai_integration.utils.format_utils import parse_date_string
+from ..omnifocus_api import apple_script_client
+from ..ai_integration.utils.format_utils import parse_date_string
 
 def handle_add(args):
     """

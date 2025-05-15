@@ -1,20 +1,21 @@
 from typing import List, Dict, Optional
 import sqlite3
 import os
-import datetime
+from datetime import datetime, timedelta
 import subprocess
 from dataclasses import dataclass
-from omnifocus_api.data_models import OmniFocusTask
+from ..omnifocus_api.data_models import OmniFocusTask
 
 @dataclass
 class Message:
     id: str
     text: str
-    date: datetime.datetime
+    date: datetime
     is_from_me: bool
     handle_id: str
     chat_id: str
-    contact_name: Optional[str] = None  # Added contact name field
+    contact: str
+    contact_name: Optional[str] = None
 
 def check_messages_permissions() -> bool:
     """Check if we have permission to access the Messages database."""
@@ -112,7 +113,8 @@ def fetch_messages_for_contact(contact_name: str, days_back: int = 30) -> List[M
                         date=datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'),
                         is_from_me=bool(row[3]),
                         handle_id=str(row[4]),
-                        chat_id=str(row[5])
+                        chat_id=str(row[5]),
+                        contact=contact_name
                     ))
                 break  # Stop if we found messages with this pattern
                 
@@ -226,7 +228,8 @@ def fetch_recent_messages(days_back: int = 7) -> List[Message]:
                 is_from_me=bool(row[3]),
                 handle_id=str(row[4]),
                 chat_id=str(row[5]),
-                contact_name=str(row[6])
+                contact_name=str(row[6]),
+                contact=str(row[6])
             ))
                 
         return messages

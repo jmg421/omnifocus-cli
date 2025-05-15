@@ -1,7 +1,9 @@
+import sys
 from typing import List, Dict, Optional
-from omnifocus_api import apple_script_client
-from omnifocus_api.data_models import OmniFocusTask
+from ..omnifocus_api import apple_script_client
+from ..omnifocus_api.data_models import OmniFocusTask
 from datetime import datetime, timedelta
+from .prioritize_command import get_tasks_for_prioritization # Assuming same directory structure
 
 def get_user_input(prompt: str, valid_options: list) -> str:
     """Get user input with validation."""

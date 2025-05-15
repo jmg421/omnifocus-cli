@@ -2,10 +2,12 @@ from typing import List, Dict, Tuple, Optional
 import os
 import re
 from datetime import datetime
-from omnifocus_api.data_models import OmniFocusTask
-from ai_integration.openai_client import openai_completion
-from ai_integration.anthropic_client import anthropic_completion
-from ai_integration.utils.prompt_utils import get_prompt_template
+from ..omnifocus_api.data_models import OmniFocusTask
+from .openai_client import openai_completion
+from .anthropic_client import anthropic_completion
+from .utils.prompt_utils import get_prompt_template
+import openai
+import json
 
 def find_duplicate_tasks(tasks: List[OmniFocusTask]) -> List[Tuple[OmniFocusTask, OmniFocusTask]]:
     """

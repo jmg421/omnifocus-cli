@@ -1,6 +1,7 @@
 import os
 import requests
-from ai_integration.utils.config import get_config
+import anthropic
+from .utils.config import get_config
 
 def anthropic_completion(prompt: str) -> str:
     """

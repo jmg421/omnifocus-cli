@@ -1,0 +1,274 @@
+/*{
+    "author": "John Muirhead-Gould",
+    "targets": ["omnifocus"],
+    "type": "action",
+    "identifier": "com.jmg.exportmasterplan.v11.final",
+    "version": "1.2.0", 
+    "description": "Exports OmniFocus database (folders, projects, tasks, inbox) to JSON.",
+    "label": "Export Full DB to JSON (v11.10)",
+    "mediumLabel": "Export Full DB to JSON (v11.10)",
+    "longLabel": "Export Full Database to JSON (including Inbox v11.10)",
+    "paletteLabel": "Export Full DB (v11.10)",
+    "image": "tray.and.arrow.up.fill" 
+}*/
+(() => {
+    // Preferences object - for file saving bookmark (not used in FileSaver version directly for path, but good to have)
+    // var preferences = new Preferences(); // Can be re-enabled if we add prefs back
+
+    var action = new PlugIn.Action(async function(_selection, _sender) {
+        console.log("[DEBUG_V11.10] Action started.");
+
+        try {
+            // --- Helper Functions ---
+            const formatDate = (date) => date ? date.toISOString() : null;
+
+            const getTaskStatusString = (status) => {
+                if (status === Task.Status.Active) return "Active";
+                if (status === Task.Status.Blocked) return "Blocked";
+                if (status === Task.Status.Dropped) return "Dropped";
+                if (status === Task.Status.Completed) return "Completed";
+                // Next, Available, DueSoon are transient/derived for the main status
+                return "Unknown"; 
+            };
+
+            const getProjectStatusString = (status) => {
+                if (status === Project.Status.Active) return "Active";
+                if (status === Project.Status.Done) return "Done";
+                if (status === Project.Status.Dropped) return "Dropped";
+                if (status === Project.Status.OnHold) return "OnHold";
+                return "Unknown";
+            };
+
+            const getFolderStatusString = (status) => {
+                if (status === Folder.Status.Active) return "Active";
+                if (status === Folder.Status.Dropped) return "Dropped";
+                return "Unknown";
+            };
+
+            const getPermalink = (object) => `omnifocus:///task/${object.id.primaryKey}`;
+
+            const getRepetitionMethodString = (method) => {
+                if (method === Task.RepetitionMethod.Fixed) return "Fixed";
+                if (method === Task.RepetitionMethod.StartDate) return "StartDate";
+                if (method === Task.RepetitionMethod.CompletionDate) return "CompletionDate";
+                return "Unknown";
+            };
+
+            const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+            const shouldSkipTask = (task) => {
+                const effectivelyCompleted = task.effectiveCompletionDate !== null;
+                const oldAndCompleted = effectivelyCompleted && task.effectiveCompletionDate < ninetyDaysAgo;
+                return task.taskStatus === Task.Status.Dropped || oldAndCompleted;
+            };
+            
+            const taskToJson = (task) => { 
+                if (shouldSkipTask(task)) return null;
+                let children = [];
+                // Check if task.children exists and has items before mapping
+                if (task.children && task.children.length > 0) {
+                    children = task.children.map(child => taskToJson(child)).filter(child => child !== null);
+                }
+                return {
+                    id: task.id.primaryKey, name: task.name, type: "Task",
+                    status: getTaskStatusString(task.taskStatus),
+                    permalink: getPermalink(task),
+                    completed: task.effectiveCompletionDate !== null,
+                    completionDate: formatDate(task.effectiveCompletionDate),
+                    dueDate: formatDate(task.effectiveDueDate),
+                    deferDate: formatDate(task.effectiveDeferDate),
+                    flagged: task.flagged, notes: task.note,
+                    tags: task.tags.map(tag => tag.name),
+                    estimatedMinutes: task.estimatedMinutes,
+                    sequential: task.sequential, 
+                    repetitionRule: task.repetitionRule ? {
+                        method: getRepetitionMethodString(task.repetitionRule.method),
+                        rule: task.repetitionRule.ruleString,
+                    } : null,
+                    children: children,
+                    projectId: task.containingProject ? task.containingProject.id.primaryKey : null,
+                    projectName: task.containingProject ? task.containingProject.name : null,
+                };
+            };
+
+            const shouldSkipProject = (project) => {
+                const effectivelyCompleted = project.effectiveCompletedDate !== null;
+                const oldAndCompleted = (project.status === Project.Status.Done || effectivelyCompleted) && project.effectiveCompletedDate < ninetyDaysAgo;
+                return project.status === Project.Status.Dropped || oldAndCompleted;
+            };
+            
+            const projectTasksCache = new Map();
+            const getTasksForProject = (projectId) => {
+                if (projectTasksCache.has(projectId)) {
+                    return projectTasksCache.get(projectId);
+                }
+                // Ensure flattenedTasks is defined before filtering
+                const tasksForProject = (typeof flattenedTasks !== 'undefined' && flattenedTasks !== null) ?
+                    flattenedTasks
+                    .filter(task => task.containingProject && task.containingProject.id.primaryKey === projectId && !task.parentTask) 
+                    .map(task => taskToJson(task))
+                    .filter(task => task !== null) : [];
+                projectTasksCache.set(projectId, tasksForProject);
+                return tasksForProject;
+            };
+
+            const projectToJson = (project) => {
+                if (shouldSkipProject(project)) return null;
+                const tasks = getTasksForProject(project.id.primaryKey);
+                return {
+                    id: project.id.primaryKey, name: project.name, type: "Project",
+                    status: getProjectStatusString(project.status),
+                    permalink: getPermalink(project),
+                    completed: project.effectiveCompletedDate !== null,
+                    completionDate: formatDate(project.effectiveCompletedDate),
+                    deferDate: formatDate(project.deferDate),
+                    dueDate: formatDate(project.dueDate),
+                    flagged: project.flagged, notes: project.note,
+                    sequential: project.sequential,
+                    tasks: tasks, 
+                    folderId: project.parentFolder ? project.parentFolder.id.primaryKey : null,
+                };
+            };
+            
+            const folderProjectsCache = new Map();
+            const folderSubFoldersCache = new Map();
+
+            const getProjectsForFolder = (folderId) => {
+                if (folderProjectsCache.has(folderId)) {
+                    return folderProjectsCache.get(folderId);
+                }
+                const projectsInFolder = (typeof flattenedProjects !== 'undefined' && flattenedProjects !== null) ?
+                    flattenedProjects
+                    .filter(p => p.parentFolder && p.parentFolder.id.primaryKey === folderId)
+                    .map(p => projectToJson(p))
+                    .filter(pJson => pJson !== null) : [];
+                folderProjectsCache.set(folderId, projectsInFolder);
+                return projectsInFolder;
+            };
+
+            const getSubFoldersForFolder = (folderId) => {
+                if (folderSubFoldersCache.has(folderId)) {
+                    return folderSubFoldersCache.get(folderId);
+                }
+                const subFolders = (typeof flattenedFolders !== 'undefined' && flattenedFolders !== null) ?
+                    flattenedFolders 
+                    .filter(f => f.parentFolder && f.parentFolder.id.primaryKey === folderId)
+                    .map(f => folderToJson(f)) 
+                    .filter(fJson => fJson !== null) : [];
+                folderSubFoldersCache.set(folderId, subFolders);
+                return subFolders;
+            };
+
+            const shouldSkipFolder = (folder, projects, subfolders) => {
+                return folder.status === Folder.Status.Dropped || (projects.length === 0 && subfolders.length === 0);
+            };
+
+            const folderToJson = (folder) => {
+                const projects = getProjectsForFolder(folder.id.primaryKey);
+                const subfolders = getSubFoldersForFolder(folder.id.primaryKey);
+                if (shouldSkipFolder(folder, projects, subfolders)) return null;
+                return {
+                    id: folder.id.primaryKey, name: folder.name, type: "Folder",
+                    status: getFolderStatusString(folder.status),
+                    folders: subfolders, 
+                    projects: projects,   
+                };
+            };
+
+            // --- Main Export Logic ---
+            console.log("[DEBUG_V11.10] Starting main export logic...");
+
+            if (typeof flattenedProjects === 'undefined' || typeof flattenedFolders === 'undefined' || 
+                typeof flattenedTasks === 'undefined' || typeof folders === 'undefined') {
+                const msg = "One or more base global collections are undefined (flattenedProjects, flattenedFolders, flattenedTasks, folders).";
+                console.error(`[DEBUG_V11.10] CRITICAL: ${msg}`); new Alert("Plugin Error", msg).show(); return;
+            }
+            console.log(`[DEBUG_V11.10] Base global collections: projects (${flattenedProjects.length}), folders (${flattenedFolders.length}), tasks (${flattenedTasks.length}), topFolders (${folders.length})`);
+
+            // Check for global 'inbox' separately as it's not part of the above check
+            if (typeof inbox === 'undefined') {
+                 console.warn("[DEBUG_V11.10] Global 'inbox' collection is undefined. Inbox items will not be exported.");
+            } else {
+                console.log(`[DEBUG_V11.10] Global 'inbox' collection found. Number of top-level inbox items: ${inbox.length}`);
+            }
+
+            // Process top-level folders 
+            const outputFolders = folders.map(folder => folderToJson(folder)).filter(folder => folder !== null);
+            
+            const topLevelExportedProjects = flattenedProjects
+                .filter(p => !p.parentFolder) 
+                .map(p => projectToJson(p))
+                .filter(pJson => pJson !== null);
+
+            // Process Inbox tasks
+            let inboxExportedTasks = [];
+            if (typeof inbox !== 'undefined' && inbox !== null) { // Check if inbox is defined
+                if (typeof inbox.apply === 'function') {
+                    console.log("[DEBUG_V11.10] Processing inbox using inbox.apply().");
+                    inbox.apply(task => { 
+                        const taskJSON = taskToJson(task);
+                        if (taskJSON) {
+                            inboxExportedTasks.push(taskJSON);
+                        }
+                    });
+                } else if (typeof inbox.forEach === 'function'){ 
+                     console.log("[DEBUG_V11.10] Processing inbox using inbox.forEach() (fallback).");
+                     inbox.forEach(task => {
+                        const taskJSON = taskToJson(task);
+                        if (taskJSON) {
+                            inboxExportedTasks.push(taskJSON);
+                        }
+                    });
+                } else {
+                    console.warn("[DEBUG_V11.10] 'inbox' object does not have .apply or .forEach. Cannot process inbox tasks.");
+                }
+            }
+            console.log(`[DEBUG_V11.10] Processed ${inboxExportedTasks.length} inbox tasks.`);
+
+            const outputData = {
+                timestamp: new Date().toISOString(),
+                structure: { 
+                    topLevelFolders: outputFolders, 
+                    topLevelProjects: topLevelExportedProjects 
+                },
+                inboxItems: inboxExportedTasks // Added inbox items
+            };
+            console.log("[DEBUG_V11.10] Data processing complete.");
+
+            // --- File Saving Logic (using FileSaver) ---
+            try {
+                console.log("[DEBUG_V11.10] Starting file saving logic using FileSaver.");
+                const suggestedFileName = "omnifocus_export.json";
+                const jsonString = JSON.stringify(outputData, null, 2);
+                const dataObject = Data.fromString(jsonString);
+                let wrapper = FileWrapper.withContents(suggestedFileName, dataObject);
+                
+                console.log("[DEBUG_V11.10] FileWrapper created. Suggested name: " + suggestedFileName);
+                const fileSaver = new FileSaver();
+                console.log("[DEBUG_V11.10] FileSaver object created. Showing save panel...");
+                
+                const urlOrNull = await fileSaver.show(wrapper);
+
+                if (urlOrNull) {
+                    console.log("[DEBUG_V11.10] File saved successfully to URL: " + urlOrNull.string);
+                    new Alert("Database Exported (v11.10)", `Data (including inbox) saved to: ${decodeURIComponent(urlOrNull.path)}`).show();
+                } else {
+                    console.log("[DEBUG_V11.10] File save panel was cancelled.");
+                    new Alert("Export Cancelled", "File save operation was cancelled.").show();
+                }
+            } catch (e) { 
+                console.error("[DEBUG_V11.10] Error during FileSaver logic:", e.toString(), e.stack || "");
+                new Alert("File Saving Error", `An error occurred: ${e.message}`).show();
+            }
+        } catch (e) { 
+            console.error("[DEBUG_V11.10] CRITICAL ERROR in action:", e.toString(), e.stack || "");
+            new Alert("Critical Plugin Error", `A critical error occurred: ${e.message}. Check console.`).show();
+        }
+    });
+
+    action.validate = function(_selection, _sender){
+        return true;
+    };
+        
+    return action;
+})();

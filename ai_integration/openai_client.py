@@ -1,7 +1,8 @@
 import os
 import traceback
+import openai
+from .utils.config import get_config
 from openai import OpenAI
-from ai_integration.utils.config import get_config
 
 def openai_completion(prompt: str) -> str:
     """
@@ -33,7 +34,6 @@ def openai_completion(prompt: str) -> str:
                 )
             except TypeError:
                 # Older OpenAI client version
-                import openai
                 openai.api_key = api_key
                 
                 print("Using older OpenAI client...")
