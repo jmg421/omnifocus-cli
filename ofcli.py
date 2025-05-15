@@ -142,8 +142,14 @@ def handle_query_export(args):
          sys.exit(1)
 
     found_items = []
+    structure_data = data_root.get("structure", {})
+
+    # Process items directly under structure (like loose tasks or projects if any,
+    # and recursively any "folders" or "projects" keys if they existed directly under structure)
+    # This initial call helps if there are items not in topLevelFolders or topLevelProjects
+    # but directly in structure.children or structure.tasks etc.
     _find_items_recursive(
-        data_root.get("structure", {}),
+        structure_data,
         query_type,
         status,
         found_items,
@@ -153,9 +159,23 @@ def handle_query_export(args):
         id_filter=id_filter
     )
     
-    if "topLevelProjects" in data_root.get("structure", {}):
+    # Explicitly process topLevelFolders
+    if "topLevelFolders" in structure_data:
         _find_items_recursive(
-            data_root["structure"]["topLevelProjects"],
+            structure_data["topLevelFolders"], # This is a list of folder objects
+            query_type,
+            status,
+            found_items,
+            name_filter=name_filter,
+            project_filter=project_filter,
+            folder_filter=folder_filter, 
+            id_filter=id_filter
+        )
+
+    # Explicitly process topLevelProjects (for projects not in any folder)
+    if "topLevelProjects" in structure_data: # Original check for topLevelProjects
+        _find_items_recursive(
+            structure_data["topLevelProjects"],
             query_type,
             status,
             found_items,
@@ -214,7 +234,7 @@ app = typer.Typer(
 )
 
 # Use direct imports from existing directories
-from .commands.add_command import handle_add
+from .commands.add_command import handle_add, handle_add_detailed_task, handle_create_project
 from .commands.list_command import handle_list
 from .commands.complete_command import handle_complete
 from .commands.prioritize_command import handle_prioritize
@@ -225,6 +245,8 @@ from .commands.imessage_command import handle_imessage
 from .commands.scan_command import handle_scan
 from .commands.cleanup_command import handle_cleanup
 from .commands.search_command import handle_search
+from .commands.merge_command import handle_merge_projects
+from .commands.delete_command import handle_delete_project
 
 @app.command("add")
 def add(
@@ -241,6 +263,28 @@ def add(
         'due': due
     })
     handle_add(args)
+
+@app.command("add-task")
+def add_detailed_task_command(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the new task."),
+    folder_name: Optional[str] = typer.Option(None, "--folder", "-f", help="Folder to place the task in (cannot be used with --project)."),
+    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="Project to place the task in (cannot be used with --folder)."),
+    note: Optional[str] = typer.Option(None, "--note", "-n", help="Optional note for the task."),
+    due_date: Optional[str] = typer.Option(None, "--due", help="Due date (natural language or YYYY-MM-DD). Needed for some recurrence rules."),
+    defer_date: Optional[str] = typer.Option(None, "--defer", help="Defer date (natural language or YYYY-MM-DD)."),
+    recurrence_rule: Optional[str] = typer.Option(None, "--recurrence", "-r", help='Recurrence rule string (e.g., "FREQ=MONTHLY;INTERVAL=1").')
+):
+    """Add a new task to OmniFocus with detailed options including recurrence."""
+    args = type('Args', (), {
+        'title': title,
+        'folder_name': folder_name,
+        'project_name': project_name,
+        'note': note,
+        'due_date': due_date,
+        'defer_date': defer_date,
+        'recurrence_rule': recurrence_rule
+    })
+    handle_add_detailed_task(args)
 
 @app.command("list")
 def list_tasks(
@@ -391,6 +435,45 @@ def list_projects():
     for p in projects:
         print(f"- {p}")
 
+# New merge-projects command
+@app.command("merge-projects")
+def merge_projects_command(
+    source_id: str = typer.Option(..., "--source-id", "-s", help="ID of the project to merge tasks from."),
+    target_id: str = typer.Option(..., "--target-id", "-t", help="ID of the project to merge tasks into."),
+    delete_source: bool = typer.Option(False, "--delete-source", "-d", help="Delete the source project after merging.")
+):
+    """Merge tasks from a source project to a target project in OmniFocus."""
+    args = type('Args', (), {
+        'source_id': source_id,
+        'target_id': target_id,
+        'delete_source': delete_source
+    })
+    handle_merge_projects(args)
+
+# New create-project command
+@app.command("create-project")
+def create_project_command(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the new project."),
+    folder_name: Optional[str] = typer.Option(None, "--folder", "-f", help="Optional folder to create the project in.")
+):
+    """Create a new project in OmniFocus, optionally within a specified folder."""
+    args = type('Args', (), {
+        'title': title,
+        'folder_name': folder_name
+    })
+    handle_create_project(args)
+
+# New delete-project command
+@app.command("delete-project")
+def delete_project_command(
+    project_id: str = typer.Option(..., "--id", help="ID of the project to delete.")
+):
+    """Delete a project from OmniFocus using its ID."""
+    args = type('Args', (), {
+        'project_id': project_id
+    })
+    handle_delete_project(args)
+
 # Define query types and status types for Typer choices
 QueryTypeChoice = Enum("QueryTypeChoice", {t: t for t in QueryType.__args__})
 StatusTypeChoice = Enum("StatusTypeChoice", {s: s for s in StatusType.__args__})
@@ -398,7 +481,7 @@ StatusTypeChoice = Enum("StatusTypeChoice", {s: s for s in StatusType.__args__})
 @app.command("query-export")
 def query_export(
     query_type: QueryTypeChoice = typer.Option(..., "--query-type", "-q", help="Type of item to query (projects, tasks, details, folders).", case_sensitive=False),
-    status: StatusTypeChoice = typer.Option(StatusTypeChoice.active, "--status", help="Filter by status (active, completed, all).", case_sensitive=False),
+    status: StatusTypeChoice = typer.Option("active", "--status", help="Filter by status (active, completed, all)."),
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Filter items by name (case-insensitive substring match)."),
     project_name: Optional[str] = typer.Option(None, "--project-name", "-p", help="Filter tasks by project name."),
     folder_name: Optional[str] = typer.Option(None, "--folder-name", "-f", help="Filter projects by folder name."),
