@@ -3,12 +3,12 @@
     "targets": ["omnifocus"],
     "type": "action",
     "identifier": "com.jmg.exportmasterplan.v11.final",
-    "version": "1.2.0", 
-    "description": "Exports OmniFocus database (folders, projects, tasks, inbox) to JSON.",
-    "label": "Export Full DB to JSON (v11.10)",
-    "mediumLabel": "Export Full DB to JSON (v11.10)",
-    "longLabel": "Export Full Database to JSON (including Inbox v11.10)",
-    "paletteLabel": "Export Full DB (v11.10)",
+    "version": "1.1.4", 
+    "description": "Exports OmniFocus database to JSON.",
+    "label": "Export Full DB to JSON (v11.final)",
+    "mediumLabel": "Export Full DB to JSON (v11.final)",
+    "longLabel": "Export Full Database to JSON (v11.final)",
+    "paletteLabel": "Export Full DB to JSON (v11.final)",
     "image": "tray.and.arrow.up.fill" 
 }*/
 (() => {
@@ -16,7 +16,7 @@
     // var preferences = new Preferences(); // Can be re-enabled if we add prefs back
 
     var action = new PlugIn.Action(async function(_selection, _sender) {
-        console.log("[DEBUG_V11.10] Action started.");
+        console.log("[DEBUG_V11.14] Action started.");
 
         try {
             // --- Helper Functions ---
@@ -176,20 +176,22 @@
             };
 
             // --- Main Export Logic ---
-            console.log("[DEBUG_V11.10] Starting main export logic...");
+            console.log("[DEBUG_V11.14] Starting main export logic...");
 
             if (typeof flattenedProjects === 'undefined' || typeof flattenedFolders === 'undefined' || 
                 typeof flattenedTasks === 'undefined' || typeof folders === 'undefined') {
                 const msg = "One or more base global collections are undefined (flattenedProjects, flattenedFolders, flattenedTasks, folders).";
-                console.error(`[DEBUG_V11.10] CRITICAL: ${msg}`); new Alert("Plugin Error", msg).show(); return;
+                console.error(`[DEBUG_V11.14] CRITICAL: ${msg}`); 
+                // new Alert("Plugin Error", msg).show(); // Avoid Alert in headless context
+                return `PLUGIN_ERROR: ${msg}`; // Return error string
             }
-            console.log(`[DEBUG_V11.10] Base global collections: projects (${flattenedProjects.length}), folders (${flattenedFolders.length}), tasks (${flattenedTasks.length}), topFolders (${folders.length})`);
+            console.log(`[DEBUG_V11.14] Base global collections: projects (${flattenedProjects.length}), folders (${flattenedFolders.length}), tasks (${flattenedTasks.length}), topFolders (${folders.length})`);
 
             // Check for global 'inbox' separately as it's not part of the above check
             if (typeof inbox === 'undefined') {
-                 console.warn("[DEBUG_V11.10] Global 'inbox' collection is undefined. Inbox items will not be exported.");
+                 console.warn("[DEBUG_V11.14] Global 'inbox' collection is undefined. Inbox items will not be exported.");
             } else {
-                console.log(`[DEBUG_V11.10] Global 'inbox' collection found. Number of top-level inbox items: ${inbox.length}`);
+                console.log(`[DEBUG_V11.14] Global 'inbox' collection found. Number of top-level inbox items: ${inbox.length}`);
             }
 
             // Process top-level folders 
@@ -204,7 +206,7 @@
             let inboxExportedTasks = [];
             if (typeof inbox !== 'undefined' && inbox !== null) { // Check if inbox is defined
                 if (typeof inbox.apply === 'function') {
-                    console.log("[DEBUG_V11.10] Processing inbox using inbox.apply().");
+                    console.log("[DEBUG_V11.14] Processing inbox using inbox.apply().");
                     inbox.apply(task => { 
                         const taskJSON = taskToJson(task);
                         if (taskJSON) {
@@ -212,7 +214,7 @@
                         }
                     });
                 } else if (typeof inbox.forEach === 'function'){ 
-                     console.log("[DEBUG_V11.10] Processing inbox using inbox.forEach() (fallback).");
+                     console.log("[DEBUG_V11.14] Processing inbox using inbox.forEach() (fallback).");
                      inbox.forEach(task => {
                         const taskJSON = taskToJson(task);
                         if (taskJSON) {
@@ -220,10 +222,10 @@
                         }
                     });
                 } else {
-                    console.warn("[DEBUG_V11.10] 'inbox' object does not have .apply or .forEach. Cannot process inbox tasks.");
+                    console.warn("[DEBUG_V11.14] 'inbox' object does not have .apply or .forEach. Cannot process inbox tasks.");
                 }
             }
-            console.log(`[DEBUG_V11.10] Processed ${inboxExportedTasks.length} inbox tasks.`);
+            console.log(`[DEBUG_V11.14] Processed ${inboxExportedTasks.length} inbox tasks.`);
 
             const outputData = {
                 timestamp: new Date().toISOString(),
@@ -233,36 +235,32 @@
                 },
                 inboxItems: inboxExportedTasks // Added inbox items
             };
-            console.log("[DEBUG_V11.10] Data processing complete.");
+            console.log("[DEBUG_V11.14] Data processing complete.");
 
-            // --- File Saving Logic (using FileSaver) ---
+            const jsonString = JSON.stringify(outputData, null, 2);
+            console.log("[DEBUG_V11.14] Data processing complete. JSON string generated.");
+            
+            // --- Copy JSON to Clipboard --- 
             try {
-                console.log("[DEBUG_V11.10] Starting file saving logic using FileSaver.");
-                const suggestedFileName = "omnifocus_export.json";
-                const jsonString = JSON.stringify(outputData, null, 2);
-                const dataObject = Data.fromString(jsonString);
-                let wrapper = FileWrapper.withContents(suggestedFileName, dataObject);
-                
-                console.log("[DEBUG_V11.10] FileWrapper created. Suggested name: " + suggestedFileName);
-                const fileSaver = new FileSaver();
-                console.log("[DEBUG_V11.10] FileSaver object created. Showing save panel...");
-                
-                const urlOrNull = await fileSaver.show(wrapper);
-
-                if (urlOrNull) {
-                    console.log("[DEBUG_V11.10] File saved successfully to URL: " + urlOrNull.string);
-                    new Alert("Database Exported (v11.10)", `Data (including inbox) saved to: ${decodeURIComponent(urlOrNull.path)}`).show();
-                } else {
-                    console.log("[DEBUG_V11.10] File save panel was cancelled.");
-                    new Alert("Export Cancelled", "File save operation was cancelled.").show();
+                if (typeof Pasteboard === 'undefined' || !Pasteboard.general) {
+                    console.error("[DEBUG_V11.14] CRITICAL: Pasteboard.general is unavailable. Cannot copy to clipboard.");
+                    return "PLUGIN_ERROR: Pasteboard.general is not available to copy data to clipboard.";
                 }
-            } catch (e) { 
-                console.error("[DEBUG_V11.10] Error during FileSaver logic:", e.toString(), e.stack || "");
-                new Alert("File Saving Error", `An error occurred: ${e.message}`).show();
+
+                Pasteboard.general.string = jsonString;
+                console.log("[DEBUG_V11.14] JSON data successfully copied to clipboard.");
+                return "SUCCESS: JSON data copied to clipboard. Length: " + jsonString.length;
+
+            } catch (error) {
+                console.error("[DEBUG_V11.14] ERROR during clipboard copy:", error.toString(), error.stack || "");
+                return `PLUGIN_ERROR: Failed to copy JSON to clipboard: ${error.message}. Stack: ${error.stack || 'N/A'}`;
             }
+            // End of Clipboard Copy Logic
+
         } catch (e) { 
-            console.error("[DEBUG_V11.10] CRITICAL ERROR in action:", e.toString(), e.stack || "");
-            new Alert("Critical Plugin Error", `A critical error occurred: ${e.message}. Check console.`).show();
+            console.error("[DEBUG_V11.14] CRITICAL ERROR in action:", e.toString(), e.stack || "");
+            // new Alert("Critical Plugin Error", `A critical error occurred: ${e.message}. Check console.`).show(); // Avoid Alert
+            return `PLUGIN_ERROR: ${e.message}. Stack: ${e.stack || 'N/A'}`;
         }
     });
 

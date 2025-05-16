@@ -235,18 +235,18 @@ app = typer.Typer(
 
 # Use direct imports from existing directories
 from .commands.add_command import handle_add, handle_add_detailed_task, handle_create_project
-from .commands.list_command import handle_list
+from .commands.list_command import handle_list, handle_list_live_tasks_in_project, handle_list_live_projects
 from .commands.complete_command import handle_complete
 from .commands.prioritize_command import handle_prioritize
 from .commands.delegation_command import handle_delegation
 from .commands.audit_command import handle_audit
-from .commands.calendar_command import handle_calendar
+from .commands.calendar_command import handle_calendar, handle_add_calendar_event
 from .commands.imessage_command import handle_imessage
 from .commands.scan_command import handle_scan
 from .commands.cleanup_command import handle_cleanup
 from .commands.search_command import handle_search
 from .commands.merge_command import handle_merge_projects
-from .commands.delete_command import handle_delete_project
+from .commands.delete_command import handle_delete_project, handle_delete_task
 
 @app.command("add")
 def add(
@@ -270,16 +270,21 @@ def add_detailed_task_command(
     folder_name: Optional[str] = typer.Option(None, "--folder", "-f", help="Folder to place the task in (cannot be used with --project)."),
     project_name: Optional[str] = typer.Option(None, "--project", "-p", help="Project to place the task in (cannot be used with --folder)."),
     note: Optional[str] = typer.Option(None, "--note", "-n", help="Optional note for the task."),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags to assign to the task."),
     due_date: Optional[str] = typer.Option(None, "--due", help="Due date (natural language or YYYY-MM-DD). Needed for some recurrence rules."),
     defer_date: Optional[str] = typer.Option(None, "--defer", help="Defer date (natural language or YYYY-MM-DD)."),
     recurrence_rule: Optional[str] = typer.Option(None, "--recurrence", "-r", help='Recurrence rule string (e.g., "FREQ=MONTHLY;INTERVAL=1").')
 ):
-    """Add a new task to OmniFocus with detailed options including recurrence."""
+    """Adds a new task to OmniFocus with detailed options including recurrence, folder/project placement, and tags."""
+    if project_name and folder_name:
+        print("Error: --project and --folder cannot be used together", file=sys.stderr)
+        raise typer.Exit(code=1)
     args = type('Args', (), {
         'title': title,
         'folder_name': folder_name,
         'project_name': project_name,
         'note': note,
+        'tags': tags,
         'due_date': due_date,
         'defer_date': defer_date,
         'recurrence_rule': recurrence_rule
@@ -474,6 +479,17 @@ def delete_project_command(
     })
     handle_delete_project(args)
 
+# New delete-task command
+@app.command("delete-task")
+def delete_task_command(
+    task_id: str = typer.Option(..., "--id", help="ID of the task to delete.")
+):
+    """Delete a task from OmniFocus using its ID."""
+    args = type('Args', (), {
+        'task_id': task_id
+    })
+    handle_delete_task(args)
+
 # Define query types and status types for Typer choices
 QueryTypeChoice = Enum("QueryTypeChoice", {t: t for t in QueryType.__args__})
 StatusTypeChoice = Enum("StatusTypeChoice", {s: s for s in StatusType.__args__})
@@ -505,6 +521,40 @@ def query_export(
         'json_file': json_file
     })
     handle_query_export(args)
+
+@app.command("list-live-tasks")
+def list_live_tasks_command(
+    project_name: str = typer.Option(..., "--project-name", "-p", help="Name of the project to list tasks from.")
+):
+    """List tasks directly from an OmniFocus project with live data."""
+    args = type('Args', (), {
+        'project_name': project_name
+    })
+    handle_list_live_tasks_in_project(args)
+
+@app.command("list-live-projects")
+def list_live_projects_command():
+    """List all projects with details (ID, name, folder, status) directly from OmniFocus."""
+    args = None
+    handle_list_live_projects(args)
+
+@app.command("add-calendar-event")
+def add_calendar_event_command(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the calendar event."),
+    start_date: str = typer.Option(..., "--start-date", help="Start date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
+    end_date: str = typer.Option(..., "--end-date", help="End date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
+    notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Optional notes for the event."),
+    calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to first writable calendar.")
+):
+    """Add a new event to Apple Calendar."""
+    args = type('Args', (), {
+        'title': title,
+        'start_date': start_date,
+        'end_date': end_date,
+        'notes': notes,
+        'calendar_name': calendar_name
+    })
+    handle_add_calendar_event(args)
 
 if __name__ == "__main__":
     app() 
