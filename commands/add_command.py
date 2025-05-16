@@ -94,7 +94,7 @@ def generate_add_detailed_task_applescript(
             script_parts.append(f'            tell newTask to add theTag')
             script_parts.append(f'        on error errMsg number errNum')
             # For now, let's report if a tag is not found or fails to add, rather than silently ignoring
-            script_parts.append(f'            display dialog ("Warning: Could not find or add tag '{s_tag_name}'. Error: " & errMsg & " (Num: " & errNum & ")") with title "Tag Error" giving up after 2') # User feedback, corrected syntax
+            script_parts.append(f"            display dialog (\"Warning: Could not find or add tag '{s_tag_name}'. Error: \" & errMsg & \" (Num: \" & errNum & \")\") with title \"Tag Error\" giving up after 2") # User feedback, corrected syntax
             script_parts.append('        end try')
 
     if recurrence_rule_str and recurrence_rule_str.upper() == "FREQ=MONTHLY;INTERVAL=1":
