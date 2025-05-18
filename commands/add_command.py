@@ -1,5 +1,5 @@
-from ..omnifocus_api import apple_script_client
-from ..ai_integration.utils.format_utils import parse_date_string
+from omnifocus_api import apple_script_client
+from ai_integration.utils.format_utils import parse_date_string
 import subprocess # For the fallback osascript execution
 from typing import Optional, List # Added import for Optional and List
 import tempfile # Added for temporary file
@@ -201,7 +201,7 @@ def handle_add_detailed_task(args):
 
     execute_omnifocus_applescript = None
     try:
-        from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
     except ImportError:
         print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
 
@@ -284,7 +284,7 @@ def handle_create_project(args):
 
     execute_omnifocus_applescript = None
     try:
-        from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
     except ImportError:
         print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
 

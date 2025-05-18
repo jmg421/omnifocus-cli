@@ -3,9 +3,11 @@ import os
 import datetime
 import re
 from typing import List, Dict, Any, Tuple
-from ..omnifocus_api import apple_script_client
-from ..omnifocus_api.data_models import OmniFocusTask
-from ..ai_integration.utils.format_utils import format_task_list
+from omnifocus_api import apple_script_client
+from omnifocus_api.data_models import OmniFocusTask
+from ai_integration.openai_client import openai_completion
+from ai_integration.anthropic_client import anthropic_completion
+from ai_integration.utils.format_utils import format_task_list
 from .prioritize_command import get_tasks_for_prioritization
 
 # Define categories for task classification

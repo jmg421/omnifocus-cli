@@ -1,5 +1,5 @@
 from typing import List
-from ...omnifocus_api.data_models import OmniFocusTask
+from omnifocus_api.data_models import OmniFocusTask
 import datetime
 
 def parse_date_string(date_str: str):

@@ -1,5 +1,5 @@
-from ..omnifocus_api import apple_script_client
-from ..ai_integration.imessage_integration import sync_messages_to_tasks
+from omnifocus_api import apple_script_client
+from ai_integration.imessage_integration import sync_messages_to_tasks
 import sys
 
 def handle_imessage(args):

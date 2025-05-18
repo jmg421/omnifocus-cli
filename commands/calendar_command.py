@@ -1,9 +1,10 @@
-import datetime
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Any
+from omnifocus_api import apple_script_client
+from omnifocus_api.data_models import OmniFocusTask
+from ai_integration.ical_integration import fetch_calendar_events, sync_with_calendar
 import requests
 import icalendar
-from ..omnifocus_api import apple_script_client
-from ..ai_integration.ical_integration import fetch_calendar_events, sync_with_calendar
 import subprocess
 import tempfile
 import os
@@ -24,17 +25,32 @@ try:
 except ImportError:
     pass
 
+def parse_datetime_flexible(dt_str: Optional[str]) -> Optional[datetime]:
+    if not dt_str:
+        return None
+    try:
+        return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            return datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            try:
+                return datetime.strptime(dt_str, "%Y-%m-%d")
+            except ValueError:
+                print(f"Warning: Could not parse date string: {dt_str}")
+                return None
+
 def handle_calendar(args):
     """
     Sync OmniFocus tasks with iCal calendars to verify reality status.
     """
     # Get calendar URL from args or config
     calendar_url = args.calendar_url
-    project = args.project
+    project_name = args.project
     
     # Set date range (default to next 30 days)
-    start_date = datetime.datetime.now()
-    end_date = start_date + datetime.timedelta(days=30)
+    start_date = datetime.now() - timedelta(days=30)
+    end_date = datetime.now() + timedelta(days=30)
     
     print(f"Fetching calendar events from {calendar_url}...")
     try:
@@ -47,10 +63,10 @@ def handle_calendar(args):
     
     # Fetch tasks from OmniFocus
     print("Fetching tasks from OmniFocus...")
-    tasks = apple_script_client.fetch_tasks(project_name=project)
+    tasks = apple_script_client.fetch_tasks(project_name=project_name)
     
     if not tasks:
-        print("No tasks found in OmniFocus.")
+        print(f"No tasks found in project '{project_name}' to check against calendar.")
         return
     
     # Sync tasks with calendar events
@@ -58,35 +74,18 @@ def handle_calendar(args):
     reality_status = sync_with_calendar(tasks, calendar_events)
     
     # Print results
-    print("\nTask Reality Status:")
-    print("=" * 50)
-    
-    real_tasks = []
-    unreal_tasks = []
-    
-    for task in tasks:
-        is_real = reality_status.get(task.id, False)
+    print("\n--- Task Reality Check ---")
+    real_tasks_count = 0
+    unreal_tasks_count = 0
+    for task_id, is_real in reality_status.items():
+        task_name = next((t.name for t in tasks if t.id == task_id), "Unknown Task")
+        status = "REAL (matches calendar event)" if is_real else "NOT REAL (no matching calendar event)"
+        print(f"- {task_name} (ID: {task_id}): {status}")
         if is_real:
-            real_tasks.append(task)
+            real_tasks_count +=1
         else:
-            unreal_tasks.append(task)
-    
-    if real_tasks:
-        print("\nVerified Real Tasks:")
-        print("-" * 20)
-        for task in real_tasks:
-            print(f"✓ {task.name}")
-    
-    if unreal_tasks:
-        print("\nUnverified Tasks (Not Found in Calendar):")
-        print("-" * 35)
-        for task in unreal_tasks:
-            print(f"? {task.name}")
-    
-    # Print summary
-    total = len(tasks)
-    real_count = len(real_tasks)
-    print(f"\nSummary: {real_count}/{total} tasks verified as real ({(real_count/total)*100:.1f}%)") 
+            unreal_tasks_count += 1
+    print(f"\nSummary: {real_tasks_count} real tasks, {unreal_tasks_count} unreal tasks.")
 
 def escape_applescript_string_local(s: Optional[str]) -> str:
     if not s: return ""

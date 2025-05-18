@@ -3,7 +3,7 @@
     "targets": ["omnifocus"],
     "type": "action",
     "identifier": "com.jmg.exportmasterplan.v11.final",
-    "version": "1.1.4", 
+    "version": "1.2.2",
     "description": "Exports OmniFocus database to JSON.",
     "label": "Export Full DB to JSON (v11.final)",
     "mediumLabel": "Export Full DB to JSON (v11.final)",
@@ -46,7 +46,7 @@
         console.log("--- END GLOBAL OBJECT DEBUG ---");
         // --- END VERY EARLY DEBUGGING ---
 
-        console.log("[DEBUG_V11.15] Action started.");
+        console.log("[DEBUG_V1.2.2] Action started.");
 
         // --- Parameter Handling ---
         let criteria = { type: 'full_dump', hideCompleted: false }; // Default criteria
@@ -56,15 +56,15 @@
                 // Basic validation of parsed criteria
                 if (parsedArg && typeof parsedArg.type === 'string') {
                     criteria = parsedArg;
-                    console.log("[DEBUG_V11.15] Received criteria: " + JSON.stringify(criteria));
+                    console.log("[DEBUG_V1.2.2] Received criteria: " + JSON.stringify(criteria));
                 } else {
-                    console.warn("[DEBUG_V11.15] Parsed argument is not a valid criteria object. Falling back to full_dump. Arg: " + argument);
+                    console.warn("[DEBUG_V1.2.2] Parsed argument is not a valid criteria object. Falling back to full_dump. Arg: " + argument);
                 }
             } catch (e) {
-                console.error("[DEBUG_V11.15] Error parsing argument JSON: " + e.toString() + ". Falling back to full_dump. Arg: " + argument);
+                console.error("[DEBUG_V1.2.2] Error parsing argument JSON: " + e.toString() + ". Falling back to full_dump. Arg: " + argument);
             }
         } else {
-            console.log("[DEBUG_V11.15] No argument or empty argument received. Performing full_dump by default.");
+            console.log("[DEBUG_V1.2.2] No argument or empty argument received. Performing full_dump by default.");
         }
 
         try {
@@ -106,9 +106,11 @@
             const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
             const shouldSkipTaskForFullDump = (task) => {
-                const effectivelyCompleted = task.effectiveCompletionDate !== null;
-                const oldAndCompleted = effectivelyCompleted && task.effectiveCompletionDate < ninetyDaysAgo;
-                return task.taskStatus === Task.Status.Dropped || oldAndCompleted;
+                // MODIFIED: Only skip explicitly dropped tasks for a truly comprehensive export
+                // const effectivelyCompleted = task.effectiveCompletionDate !== null;
+                // const oldAndCompleted = effectivelyCompleted && task.effectiveCompletionDate < ninetyDaysAgo;
+                // return task.taskStatus === Task.Status.Dropped || oldAndCompleted;
+                return task.taskStatus === Task.Status.Dropped;
             };
             
             const taskToJsonFullDump = (task) => { 
@@ -116,6 +118,10 @@
                 let children = [];
                 if (task.children && task.children.length > 0) {
                     children = task.children.map(child => taskToJsonFullDump(child)).filter(child => child !== null);
+                }
+                // Debug log for non-completed tasks being exported
+                if (task.effectiveCompletionDate === null && task.taskStatus !== Task.Status.Dropped) {
+                    // console.log(`[NON-COMPLETED EXPORT] ID: ${task.id.primaryKey}, Name: ${task.name}, Status: ${getTaskStatusString(task.taskStatus)}, OFStatus: ${task.taskStatus.toString()}`);
                 }
                 return {
                     id: task.id.primaryKey, name: task.name, type: "Task",
@@ -142,13 +148,15 @@
             };
 
             const shouldSkipProjectForFullDump = (project) => {
-                const effectivelyCompleted = project.effectiveCompletedDate !== null;
-                const oldAndCompleted = (project.status === Project.Status.Done || effectivelyCompleted) && project.effectiveCompletedDate < ninetyDaysAgo;
-                return project.status === Project.Status.Dropped || oldAndCompleted;
+                // MODIFIED: Only skip explicitly dropped projects
+                // const effectivelyCompleted = project.effectiveCompletedDate !== null;
+                // const oldAndCompleted = (project.status === Project.Status.Done || effectivelyCompleted) && project.effectiveCompletedDate < ninetyDaysAgo;
+                // return project.status === Project.Status.Dropped || oldAndCompleted;
+                return project.status === Project.Status.Dropped;
             };
             
             const projectTasksCache = new Map();
-            const getTasksForProjectFullDump = (projectId) => {
+            const getTasksForProjectFullDump = (projectId, reliableProjectsArrayArg) => {
                 if (projectTasksCache.has(projectId)) {
                     return projectTasksCache.get(projectId);
                 }
@@ -161,9 +169,32 @@
                 return tasksForProject;
             };
 
-            const projectToJsonFullDump = (project) => {
-                if (shouldSkipProjectForFullDump(project)) return null;
-                const tasks = getTasksForProjectFullDump(project.id.primaryKey);
+            const projectToJsonFullDump = (project, reliableProjectsArrayArg) => {
+                // +++ ENTRY LOGGING +++
+                console.log(`[projectToJsonFullDump ENTER] Processing Project: '${project.name}', ID: '${project.id.primaryKey}', Status: ${getProjectStatusString(project.status)}`);
+                if (project.id.primaryKey === 'gbUwfPGfyjw' || project.name.toLowerCase().includes('cortex biomed')) {
+                    console.log(`[projectToJsonFullDump ENTER] *** Target 'Cortex BioMed' IS BEING PROCESSED by projectToJsonFullDump ***`);
+                }
+                // +++ END ENTRY LOGGING +++
+
+                if (shouldSkipProjectForFullDump(project)) {
+                    console.log(`[projectToJsonFullDump SKIP] Project '${project.name}' (ID: '${project.id.primaryKey}') SKIPPED by shouldSkipProjectForFullDump.`);
+                    return null;
+                }
+                
+                const tasks = getTasksForProjectFullDump(project.id.primaryKey, reliableProjectsArrayArg);
+                // Debug log for task count
+                if (project.id.primaryKey === 'gbUwfPGfyjw' || project.name.toLowerCase().includes('cortex biomed')) {
+                    console.log(`[projectToJsonFullDump CORTEX_TASKS] Cortex BioMed - Task count from getTasksForProjectFullDump: ${tasks.length}`);
+                    // You could even log the tasks themselves if needed: console.log(JSON.stringify(tasks));
+                }
+
+                // Skip project if it has no tasks after filtering and is not explicitly Active or OnHold
+                // (This helps remove empty old projects that weren't explicitly Dropped but have no relevant content)
+                // if (tasks.length === 0 && project.status !== Project.Status.Active && project.status !== Project.Status.OnHold) {
+                //     console.log(`[SKIPPING EMPTY PROJECT] ID: ${project.id.primaryKey}, Name: ${project.name}, Status: ${getProjectStatusString(project.status)}`);
+                //     return null;
+                // }
                 return {
                     id: project.id.primaryKey, name: project.name, type: "Project",
                     status: getProjectStatusString(project.status),
@@ -176,46 +207,74 @@
                     sequential: project.sequential,
                     tasks: tasks, 
                     folderId: project.parentFolder ? project.parentFolder.id.primaryKey : null,
-                    note: project.note,
+                    // note: project.note, // Duplicate, already have notes above
                 };
             };
             
             const folderProjectsCache = new Map();
             const folderSubFoldersCache = new Map();
 
-            const getProjectsForFolderFullDump = (folderId) => {
+            const getProjectsForFolderFullDump = (folderId, reliableProjectsArrayArg) => {
+                console.log(`[getProjectsForFolderFullDump] Getting projects for Folder ID: '${folderId}'`); // Log folder ID
                 if (folderProjectsCache.has(folderId)) {
                     return folderProjectsCache.get(folderId);
                 }
-                const projectsInFolder = (typeof flattenedProjects !== 'undefined' && flattenedProjects !== null) ?
-                    flattenedProjects
+                const projectsInFolder = (typeof reliableProjectsArrayArg !== 'undefined' && reliableProjectsArrayArg !== null) ?
+                    reliableProjectsArrayArg
                     .filter(p => p.parentFolder && p.parentFolder.id.primaryKey === folderId)
-                    .map(p => projectToJsonFullDump(p))
+                    .map(p => projectToJsonFullDump(p, reliableProjectsArrayArg))
                     .filter(pJson => pJson !== null) : [];
                 folderProjectsCache.set(folderId, projectsInFolder);
                 return projectsInFolder;
             };
 
-            const getSubFoldersForFolderFullDump = (folderId) => {
+            const getSubFoldersForFolderFullDump = (folderId, reliableProjectsArrayArg) => {
+                console.log(`[getSubFoldersForFolderFullDump] Getting subfolders for Parent Folder ID: '${folderId}'`); // Log parent folder ID
                 if (folderSubFoldersCache.has(folderId)) {
                     return folderSubFoldersCache.get(folderId);
                 }
                 const subFolders = (typeof flattenedFolders !== 'undefined' && flattenedFolders !== null) ?
                     flattenedFolders 
-                    .filter(f => f.parentFolder && f.parentFolder.id.primaryKey === folderId)
-                    .map(f => folderToJsonFullDump(f)) 
+                    .filter(f => {
+                        const hasParent = f.parentFolder && f.parentFolder.id.primaryKey === folderId;
+                        // if (hasParent) { // Log found subfolders
+                        //     console.log(`[getSubFoldersForFolderFullDump] Found subfolder: '${f.name}' (ID: '${f.id.primaryKey}') under Parent ID: '${folderId}'`);
+                        // }
+                        return hasParent;
+                    })
+                    .map(f => {
+                        console.log(`[getSubFoldersForFolderFullDump] Mapping subfolder: '${f.name}' (ID: '${f.id.primaryKey}') for Parent ID: '${folderId}'`); // Log before mapping
+                        return folderToJsonFullDump(f, reliableProjectsArrayArg);
+                    })
                     .filter(fJson => fJson !== null) : [];
                 folderSubFoldersCache.set(folderId, subFolders);
                 return subFolders;
             };
 
             const shouldSkipFolderForFullDump = (folder, projects, subfolders) => {
-                return folder.status === Folder.Status.Dropped || (projects.length === 0 && subfolders.length === 0);
+                 // MODIFIED: Only skip folder if it's dropped. If active/no status, keep even if empty.
+                return folder.status === Folder.Status.Dropped;
+                // return folder.status === Folder.Status.Dropped || (projects.length === 0 && subfolders.length === 0);
             };
 
-            const folderToJsonFullDump = (folder) => {
-                const projects = getProjectsForFolderFullDump(folder.id.primaryKey);
-                const subfolders = getSubFoldersForFolderFullDump(folder.id.primaryKey);
+            const folderToJsonFullDump = (folder, reliableProjectsArrayArg) => {
+                console.log(`[folderToJsonFullDump ENTER] Processing Folder: '${folder.name}', ID: '${folder.id.primaryKey}'`);
+                console.log(`[folderToJsonFullDump DEBUG] Type of incoming reliableProjectsArrayArg: ${typeof reliableProjectsArrayArg}`);
+                if (reliableProjectsArrayArg === undefined) {
+                    console.error("[folderToJsonFullDump FATAL_DEBUG] reliableProjectsArrayArg is UNDEFINED at entry!");
+                }
+
+                const projects = getProjectsForFolderFullDump(folder.id.primaryKey, reliableProjectsArrayArg);
+
+                // Explicitly use the parameter in a new const for clarity and to test scope
+                const argForSubfolderProcessing = reliableProjectsArrayArg; 
+                console.log(`[folderToJsonFullDump DEBUG] Type of argForSubfolderProcessing: ${typeof argForSubfolderProcessing}`);
+                if (argForSubfolderProcessing === undefined) {
+                    console.error("[folderToJsonFullDump FATAL_DEBUG] argForSubfolderProcessing became UNDEFINED before call to getSubFoldersForFolderFullDump!");
+                }
+
+                const subfolders = getSubFoldersForFolderFullDump(folder.id.primaryKey, argForSubfolderProcessing); 
+
                 if (shouldSkipFolderForFullDump(folder, projects, subfolders)) return null;
                 return {
                     id: folder.id.primaryKey, name: folder.name, type: "Folder",
@@ -234,29 +293,17 @@
             let outputSummaryMessage = "";
 
             if (criteria.type === 'next_actions') {
-                console.log("[DEBUG_V11.15] Processing 'next_actions' request.");
+                console.log("[DEBUG_V1.2.2] Processing 'next_actions' request.");
                 
-                // --- Start: Define database access functions for 'next_actions' ---
-                // const currentDB = app.document.database; // Get database from frontmost document
-                // if (!currentDB) {
-                // console.error("[DEBUG_V11.15] CRITICAL: Could not get current database (app.document.database is null/undefined).");
-                // throw new Error("OmniJS Error: Could not access app.document.database.");
-                // }
-                // const dbProjectWithId = currentDB.projectWithId.bind(currentDB);
-                // const dbFolderWithId = currentDB.folderWithId.bind(currentDB);
-                // const dbTagWithId = currentDB.tagWithId.bind(currentDB);
-                // --- End: Define database access functions ---
-                // Database access functions are removed; we will use direct array lookups.
-
                 const filteredOutput = {
-                    version: "omni-js-filtered-1.1", // Incremented version
+                    version: "omni-js-filtered-1.1.1",
                     timestamp: new Date().toISOString(),
                     criteriaUsed: criteria,
                     tasks: [],
-                    projects: {}, // Record<string, ProjectData>
-                    folders: {},  // Record<string, FolderData>
-                    tags: {},     // Record<string, TagData>
-                    inboxTasks: [], // Kept separate for clarity, can merge into tasks later if needed by MCP
+                    projects: {}, 
+                    folders: {},  
+                    tags: {},     
+                    inboxTasks: [], 
                     taskTags: [] 
                 };
 
@@ -265,43 +312,36 @@
                 const relevantFolderIds = new Set();
                 const relevantTagIds = new Set();
 
-                // Helper to convert OmniFocus Task to JSON for filtered output
                 const taskToJsonForFiltered = (task) => {
                     if (!task || !task.id || !task.id.primaryKey) return null;
                     return {
                         id: task.id.primaryKey,
                         name: task.name,
-                        status: getTaskStatusString(task.taskStatus), // Ensure this aligns with OmnifocusTask status
+                        status: getTaskStatusString(task.taskStatus), 
                         note: task.note || "",
                         dueDate: formatDate(task.effectiveDueDate),
                         deferDate: formatDate(task.effectiveDeferDate),
                         completedDate: formatDate(task.effectiveCompletionDate),
                         projectId: task.containingProject ? task.containingProject.id.primaryKey : null,
                         parentId: task.parentTask ? task.parentTask.id.primaryKey : null,
-                        // childIds: (task.children || []).map(c => c.id.primaryKey), // Usually not needed for "next actions" flat list
                         tagIds: task.tags.map(t => t.id.primaryKey),
                         flagged: task.flagged,
                         estimatedMinutes: task.estimatedMinutes,
-                        // Properties from OmnifocusTask not directly on OF task obj might need defaults:
-                        // permalink: getPermalink(task), // Optional but nice
-                        // sequential: task.sequential, // Usually a project property, but can be on tasks
                     };
                 };
                 
-                // Process all tasks (from projects and inbox)
-                const allTasksToConsider = flattenedTasks.slice(); // Create a mutable copy
+                const allTasksToConsider = flattenedTasks.slice(); 
                 if (typeof inbox !== 'undefined' && inbox !== null && typeof inbox.forEach === 'function') {
                      inbox.forEach(task => allTasksToConsider.push(task));
                 } else if (typeof inbox !== 'undefined' && inbox !== null && typeof inbox.apply === 'function') {
-                    // Fallback for older OF versions that might use .apply on inbox
                     inbox.apply(task => allTasksToConsider.push(task));
                 } else {
-                    console.warn("[DEBUG_V11.15] (next_actions) 'inbox' is undefined or not iterable. Cannot add inbox tasks to consideration.");
+                    console.warn("[DEBUG_V1.2.2] (next_actions) 'inbox' is undefined or not iterable. Cannot add inbox tasks to consideration.");
                 }
 
 
                 allTasksToConsider.forEach(task => {
-                    if (!task || !task.id) return; // Skip invalid tasks early
+                    if (!task || !task.id) return; 
 
                     let isNextAction = false;
                     const taskStatus = task.taskStatus;
@@ -313,12 +353,10 @@
                     if (criteria.hideCompleted && (taskStatus === Task.Status.Completed || taskStatus === Task.Status.Dropped)) {
                         isNextAction = false;
                     }
-                    if (taskStatus === Task.Status.Dropped) { // Always skip dropped
+                    if (taskStatus === Task.Status.Dropped) { 
                         isNextAction = false;
                     }
                     
-                    // Ensure task is not deferred to the future if it's not flagged
-                    // (Flagged tasks often bypass defer dates in terms of "next action" consideration)
                     if (!task.flagged && task.effectiveDeferDate && task.effectiveDeferDate > new Date()) {
                          isNextAction = false;
                     }
@@ -328,7 +366,6 @@
                         const taskJson = taskToJsonForFiltered(task);
                         if (!taskJson) return;
 
-                        // Store in inboxTasks or regular tasks based on projectId
                         if (taskJson.projectId) {
                             filteredOutput.tasks.push(taskJson);
                         } else {
@@ -339,28 +376,26 @@
                         if (taskJson.projectId) relevantProjectIds.add(taskJson.projectId);
                         (taskJson.tagIds || []).forEach(tagId => relevantTagIds.add(tagId));
                         
-                        // Add to taskTags
                         (taskJson.tagIds || []).forEach(tagId => {
                             filteredOutput.taskTags.push({ taskId: taskJson.id, tagId: tagId });
                         });
                     }
                 });
-                console.log(`[DEBUG_V11.15] Filtered ${relevantTaskIds.size} next action tasks.`);
+                console.log(`[DEBUG_V1.2.2] Filtered ${relevantTaskIds.size} next action tasks.`);
 
                 relevantProjectIds.forEach(projId => {
-                    const project = flattenedProjects.find(p => p.id.primaryKey === projId); // Use direct find
+                    const project = flattenedProjects.find(p => p.id.primaryKey === projId); 
                     if (project) {
                         filteredOutput.projects[projId] = {
                             id: project.id.primaryKey,
                             name: project.name,
-                            status: getProjectStatusString(project.status), // Align with OmnifocusProject status
-                            tasks: [], // Tasks are already in the main tasks list for filtered view
+                            status: getProjectStatusString(project.status), 
+                            tasks: [], 
                             note: project.note || "",
-                            dueDate: formatDate(project.dueDate), // Actual due date of project itself
+                            dueDate: formatDate(project.dueDate), 
                             deferDate: formatDate(project.deferDate),
                             completedDate: formatDate(project.effectiveCompletedDate),
                             flagged: project.flagged,
-                            // parentFolderID will be added when processing folders
                         };
                         if (project.parentFolder) {
                             relevantFolderIds.add(project.parentFolder.id.primaryKey);
@@ -368,30 +403,28 @@
                     }
                 });
 
-                const processedFolderIds = new Set(); // To avoid reprocessing folders due to recursive parent add
-                // Collect all folders, including parents, iteratively
+                const processedFolderIds = new Set(); 
                 let folderQueue = Array.from(relevantFolderIds);
                 while(folderQueue.length > 0) {
                     const folderId = folderQueue.shift();
                     if (!folderId || processedFolderIds.has(folderId)) continue;
 
-                    const folder = flattenedFolders.find(f => f.id.primaryKey === folderId); // Use direct find
+                    const folder = flattenedFolders.find(f => f.id.primaryKey === folderId); 
                     if (folder) {
                          filteredOutput.folders[folderId] = {
                             id: folder.id.primaryKey,
                             name: folder.name,
                             parentFolderID: folder.parentFolder ? folder.parentFolder.id.primaryKey : null,
-                            // status: getFolderStatusString(folder.status) // Optional for filtered, MCP mainly needs hierarchy
                         };
                         processedFolderIds.add(folderId);
                         if (folder.parentFolder && !processedFolderIds.has(folder.parentFolder.id.primaryKey)) {
-                            folderQueue.push(folder.parentFolder.id.primaryKey); // Add parent to queue
+                            folderQueue.push(folder.parentFolder.id.primaryKey); 
                         }
                     }
                 }
                 
                 relevantTagIds.forEach(tagId => {
-                    const tag = tags.find(t => t.id.primaryKey === tagId); // Use direct find on global tags array
+                    const tag = tags.find(t => t.id.primaryKey === tagId); 
                     if (tag) {
                         filteredOutput.tags[tagId] = {
                             id: tag.id.primaryKey,
@@ -402,50 +435,134 @@
                 
                 jsonOutputString = JSON.stringify(filteredOutput, null, 2);
                 outputSummaryMessage = `SUCCESS: Filtered 'next_actions' data copied to clipboard. Tasks: ${filteredOutput.tasks.length + filteredOutput.inboxTasks.length}. JSON length: ${jsonOutputString.length}`;
-                console.log(`[DEBUG_V11.15] Next Actions processing complete. Tasks: ${filteredOutput.tasks.length + filteredOutput.inboxTasks.length}, Projects: ${Object.keys(filteredOutput.projects).length}, Folders: ${Object.keys(filteredOutput.folders).length}, Tags: ${Object.keys(filteredOutput.tags).length}.`);
+                console.log(`[DEBUG_V1.2.2] Next Actions processing complete. Tasks: ${filteredOutput.tasks.length + filteredOutput.inboxTasks.length}, Projects: ${Object.keys(filteredOutput.projects).length}, Folders: ${Object.keys(filteredOutput.folders).length}, Tags: ${Object.keys(filteredOutput.tags).length}.`);
 
 
             } else { // Default to 'full_dump'
-                console.log("[DEBUG_V11.15] Processing 'full_dump' request (or fallback).");
+                console.log("[DEBUG_V1.2.2] Processing 'full_dump' request (or fallback).");
                 
-                // --- Original Main Export Logic for Full Dump ---
-                projectTasksCache.clear(); // Clear caches for full dump
+                // +++ START PROJECT DEBUGGING LOOP +++
+                let actualProjectCountViaForEach = 0;
+                if (typeof flattenedProjects !== 'undefined' && flattenedProjects !== null && typeof flattenedProjects.forEach === 'function') {
+                    console.log("[PROJECT_DEBUG] Iterating through 'flattenedProjects' (forEach loop)... Reports .length as: " + flattenedProjects.length);
+                    flattenedProjects.forEach((proj, index) => {
+                        actualProjectCountViaForEach++;
+                        if (proj && proj.name) {
+                            let statusStr = 'Unknown Status';
+                            try { statusStr = getProjectStatusString(proj.status); } catch (e) { statusStr = `Error getting status: ${proj.status}`; }
+                            // More concise logging for general projects
+                            if (index % 20 === 0 || (proj.name && proj.name.toLowerCase().includes('cortex biomed'))) { // Log first, then every 20th, and always Cortex
+                                console.log(`[PROJECT_DEBUG] Index: ${index}, Name: '${proj.name}', Status: ${statusStr}, ID: ${proj.id.primaryKey}`);
+                            }
+                            if (proj.name.toLowerCase().includes('cortex biomed')) {
+                                console.log(`[PROJECT_DEBUG] *** Found 'Cortex BioMed' (or similar) in flattenedProjects: Name: ${proj.name}, Status: ${statusStr} ***`);
+                            }
+                        }
+                    });
+                    console.log(`[PROJECT_DEBUG] Finished iterating through 'flattenedProjects' via forEach. Counted: ${actualProjectCountViaForEach} projects.`);
+                } else {
+                    console.log("[PROJECT_DEBUG] 'flattenedProjects' is undefined, null, or not iterable for forEach debug.");
+                }
+                // +++ END PROJECT DEBUGGING LOOP +++
+
+                // +++ START RELIABLE PROJECT ARRAY CONSTRUCTION +++
+                const reliableProjectsArray = [];
+                if (typeof flattenedProjects !== 'undefined' && flattenedProjects !== null && typeof flattenedProjects.forEach === 'function') {
+                    flattenedProjects.forEach(proj => {
+                        if (proj && typeof proj === 'object' && proj.id) { // Basic check for a valid project-like object
+                           reliableProjectsArray.push(proj);
+                        }
+                    });
+                    console.log(`[DEBUG_V1.2.2] Constructed 'reliableProjectsArray' with ${reliableProjectsArray.length} projects (this count is from forEach iteration).`);
+                } else {
+                    console.warn("[DEBUG_V1.2.2] 'flattenedProjects' was not suitable for building 'reliableProjectsArray'.");
+                }
+
+                // +++ DUMP FLATTENEDFOLDERS +++
+                console.log("[FLATTENED_FOLDERS_DUMP] Iterating all folders in flattenedFolders (Count: " + (flattenedFolders ? flattenedFolders.length : 'N/A') + "):");
+                if (typeof flattenedFolders !== 'undefined' && flattenedFolders !== null && typeof flattenedFolders.forEach === 'function') {
+                    flattenedFolders.forEach(folder => {
+                        let parentInfo = "No parentFolder property or parentFolder is null/undefined";
+                        if (folder.parentFolder && folder.parentFolder.id && folder.parentFolder.name) {
+                            parentInfo = `Parent Name: '${folder.parentFolder.name}', Parent ID: '${folder.parentFolder.id.primaryKey}'`;
+                        } else if (folder.parentFolder) {
+                            parentInfo = `Parent exists but is not a full object: ${folder.parentFolder}`;
+                        } else if (folder.hasOwnProperty('parentFolder')) {
+                            parentInfo = "parentFolder property exists but is null or undefined.";
+                        }
+
+                        console.log(`  - Folder: '${folder.name}' (ID: ${folder.id.primaryKey}), ${parentInfo}`);
+                        if (folder.id.primaryKey === "iEhR4VGgGbp") { // John's ID
+                             console.log(`    *** THIS IS THE 'John' FOLDER (ID iEhR4VGgGbp) as seen in flattenedFolders ***`);
+                        }
+                        if (folder.id.primaryKey === "amGxjZLKRBV") { // Family's ID
+                             console.log(`    *** THIS IS THE 'Family' FOLDER (ID amGxjZLKRBV) as seen in flattenedFolders ***`);
+                        }
+                    });
+                } else {
+                    console.log("[FLATTENED_FOLDERS_DUMP] flattenedFolders is not iterable or undefined.");
+                }
+                // +++ END DUMP FLATTENEDFOLDERS +++
+
+                // +++ PRE-FILTER VALIDATION FOR CORTEX BIOMED +++
+                const cortexProjectObject = reliableProjectsArray.find(p => p.id.primaryKey === 'gbUwfPGfyjw');
+                if (cortexProjectObject) {
+                    console.log(`[PRE-FILTER VALIDATION] Cortex BioMed (gbUwfPGfyjw) found in reliableProjectsArray.`);
+                    console.log(`    - Name: ${cortexProjectObject.name}`);
+                    console.log(`    - Status: ${getProjectStatusString(cortexProjectObject.status)}`);
+                    console.log(`    - Has parentFolder property: ${cortexProjectObject.hasOwnProperty('parentFolder')}`);
+                    if (cortexProjectObject.hasOwnProperty('parentFolder')) {
+                        console.log(`    - parentFolder value: ${cortexProjectObject.parentFolder}`);
+                        if (cortexProjectObject.parentFolder) {
+                            console.log(`    - parentFolder ID: ${cortexProjectObject.parentFolder.id.primaryKey}`);
+                            console.log(`    - parentFolder Name: ${cortexProjectObject.parentFolder.name}`);
+                        }
+                    }
+                    // Log properties of the project object to see its structure
+                    // console.log(`    - Cortex Project Object Keys: ${Object.keys(cortexProjectObject).join(', ')}`);
+                    // try { console.log(`    - Cortex Project Object (Full): ${JSON.stringify(cortexProjectObject)}`); } catch (e) { console.log("Error stringifying cortexProjectObject"); }
+                } else {
+                    console.warn("[PRE-FILTER VALIDATION] Cortex BioMed (gbUwfPGfyjw) NOT found in reliableProjectsArray. This is unexpected!");
+                }
+                // +++ END PRE-FILTER VALIDATION +++
+
+                projectTasksCache.clear();
                 folderProjectsCache.clear();
                 folderSubFoldersCache.clear();
 
-                if (typeof flattenedProjects === 'undefined' || typeof flattenedFolders === 'undefined' || 
+                if (typeof reliableProjectsArray === 'undefined' || typeof flattenedFolders === 'undefined' || 
                     typeof flattenedTasks === 'undefined' || typeof folders === 'undefined') {
-                    const msg = "One or more base global collections are undefined for full dump.";
-                    console.error(`[DEBUG_V11.15] CRITICAL (full_dump): ${msg}`); 
-                    return `PLUGIN_ERROR: ${msg}`;
+                    const msg = "One or more base collections (reliableProjectsArray, flattenedFolders, flattenedTasks, folders) are undefined for full dump.";
+                    console.error(`[DEBUG_V1.2.2] CRITICAL (full_dump): ${msg}`); 
+                    throw new Error(`PLUGIN_ERROR: ${msg}`);
                 }
-                console.log(`[DEBUG_V11.15] (full_dump) Base collections: projects (${flattenedProjects.length}), folders (${flattenedFolders.length}), tasks (${flattenedTasks.length}), topFolders (${folders.length})`);
+                console.log(`[DEBUG_V1.2.2] (full_dump) Base collections for export processing: reliableProjects (${reliableProjectsArray.length}), flattenedFolders (${flattenedFolders.length}), flattenedTasks (${flattenedTasks.length}), topFolders (${folders.length})`);
 
                 if (typeof inbox === 'undefined' || inbox === null) {
-                     console.warn("[DEBUG_V11.15] (full_dump) Global 'inbox' undefined or null.");
+                     console.warn("[DEBUG_V1.2.2] (full_dump) Global 'inbox' undefined or null.");
                 } else {
-                    console.log(`[DEBUG_V11.15] (full_dump) Inbox items: ${inbox.length !== undefined ? inbox.length : 'N/A (inbox.length undefined)'}`);
+                    console.log(`[DEBUG_V1.2.2] (full_dump) Inbox items: ${inbox.length !== undefined ? inbox.length : 'N/A (inbox.length undefined)'}`);
                 }
 
-                const outputFolders = folders.map(folder => folderToJsonFullDump(folder)).filter(folder => folder !== null);
+                const outputFolders = folders.map(folder => folderToJsonFullDump(folder, reliableProjectsArray)).filter(folder => folder !== null);
                 
-                const topLevelExportedProjects = flattenedProjects
+                const topLevelExportedProjects = reliableProjectsArray
                     .filter(p => !p.parentFolder) 
-                    .map(p => projectToJsonFullDump(p))
+                    .map(p => projectToJsonFullDump(p, reliableProjectsArray))
                     .filter(pJson => pJson !== null);
 
                 let inboxExportedTasks = [];
                 if (typeof inbox !== 'undefined' && inbox !== null) {
                     if (typeof inbox.forEach === 'function'){ 
-                         console.log("[DEBUG_V11.15] (full_dump) Processing inbox using inbox.forEach().");
-                         inbox.forEach(task => { // Iterate over inbox directly
+                         console.log("[DEBUG_V1.2.2] (full_dump) Processing inbox using inbox.forEach().");
+                         inbox.forEach(task => { 
                             const taskJSON = taskToJsonFullDump(task);
                             if (taskJSON) {
                                 inboxExportedTasks.push(taskJSON);
                             }
                         });
-                    } else if (typeof inbox.apply === 'function') { // Fallback for older OF versions
-                        console.log("[DEBUG_V11.15] (full_dump) Processing inbox using inbox.apply() (fallback).");
+                    } else if (typeof inbox.apply === 'function') { 
+                        console.log("[DEBUG_V1.2.2] (full_dump) Processing inbox using inbox.apply() (fallback).");
                         inbox.apply(task => {
                             const taskJSON = taskToJsonFullDump(task);
                             if (taskJSON) {
@@ -453,48 +570,111 @@
                             }
                         });
                     } else {
-                        console.warn("[DEBUG_V11.15] (full_dump) 'inbox' object does not have .forEach or .apply. Cannot process inbox tasks.");
+                        console.warn("[DEBUG_V1.2.2] (full_dump) 'inbox' object does not have .forEach or .apply. Cannot process inbox tasks.");
                     }
                 } else {
-                     console.warn("[DEBUG_V11.15] (full_dump) 'inbox' is undefined or null. Cannot process inbox tasks.");
+                     console.warn("[DEBUG_V1.2.2] (full_dump) 'inbox' is undefined or null. Cannot process inbox tasks.");
                 }
-                console.log(`[DEBUG_V11.15] (full_dump) Processed ${inboxExportedTasks.length} inbox tasks.`);
+                console.log(`[DEBUG_V1.2.2] (full_dump) Processed ${inboxExportedTasks.length} inbox tasks.`);
+
+                const allTagsExport = {};
+                if (typeof tags !== 'undefined' && tags !== null && typeof tags.forEach === 'function') {
+                    tags.forEach(tag => {
+                        allTagsExport[tag.id.primaryKey] = {
+                            id: tag.id.primaryKey,
+                            name: tag.name
+                        };
+                    });
+                } else {
+                    console.warn("[DEBUG_V1.2.2] (full_dump) Global 'tags' collection is not available for full export.");
+                }
 
                 const fullOutputData = {
-                    version: "omni-js-full-dump-1.2", // Version for full dump payload
+                    version: "omni-js-full-dump-1.2.3", // Incremented version
                     timestamp: new Date().toISOString(),
                     structure: { 
                         topLevelFolders: outputFolders, 
                         topLevelProjects: topLevelExportedProjects 
                     },
-                    inboxItems: inboxExportedTasks
+                    inboxItems: inboxExportedTasks,
+                    tags: allTagsExport,
                 };
-                console.log("[DEBUG_V11.15] (full_dump) Data processing complete.");
+
+                // +++ START VALIDATION LOGGING FOR CORTEX BIOMED +++
+                let cortexFoundInOutputObject = false;
+                const targetProjectIdValidation = "gbUwfPGfyjw"; // Cortex BioMed ID
+                const targetProjectNameValidation = "cortex biomed";
+
+                console.log(`[VALIDATION] Checking fullOutputData for Project ID: ${targetProjectIdValidation} or Name containing: ${targetProjectNameValidation}`);
+
+                // Check topLevelProjects
+                if (fullOutputData.structure && fullOutputData.structure.topLevelProjects) {
+                    fullOutputData.structure.topLevelProjects.forEach(p => {
+                        if (p.id === targetProjectIdValidation || (p.name && p.name.toLowerCase().includes(targetProjectNameValidation))) {
+                            cortexFoundInOutputObject = true;
+                            console.log(`[VALIDATION] Target project FOUND in fullOutputData.structure.topLevelProjects. Name: ${p.name}, ID: ${p.id}`);
+                        }
+                    });
+                }
+
+                // Recursively check projects within folders
+                if (!cortexFoundInOutputObject && fullOutputData.structure && fullOutputData.structure.topLevelFolders) {
+                    function findTargetInFolders(folders) {
+                        if (!folders || cortexFoundInOutputObject) return; // Stop if already found
+                        folders.forEach(folder => {
+                            if (cortexFoundInOutputObject) return; // Stop if already found by a parallel check
+
+                            if (folder.projects) {
+                                folder.projects.forEach(p => {
+                                    if (p.id === targetProjectIdValidation || (p.name && p.name.toLowerCase().includes(targetProjectNameValidation))) {
+                                        cortexFoundInOutputObject = true;
+                                        console.log(`[VALIDATION] Target project FOUND in fullOutputData within a folder. Folder: '${folder.name}', Project Name: '${p.name}', ID: '${p.id}'`);
+                                    }
+                                });
+                            }
+                            if (folder.folders) { // Check subfolders recursively
+                                findTargetInFolders(folder.folders);
+                            }
+                        });
+                    }
+                    findTargetInFolders(fullOutputData.structure.topLevelFolders);
+                }
+
+                if (cortexFoundInOutputObject) {
+                    console.log("[VALIDATION] SUCCESS: Target project was found in the final 'fullOutputData' object structure before stringification.");
+                } else {
+                    console.warn("[VALIDATION] FAILURE: Target project was NOT FOUND in the final 'fullOutputData' object structure before stringification.");
+                }
+                // +++ END VALIDATION LOGGING FOR CORTEX BIOMED +++
+
+                console.log("[DEBUG_V1.2.2] (full_dump) Data processing complete.");
 
                 jsonOutputString = JSON.stringify(fullOutputData, null, 2);
                 outputSummaryMessage = `SUCCESS: Full database data copied to clipboard. Length: ${jsonOutputString.length}`;
-                // --- End of Original Main Export Logic ---
             }
 
-            // --- Copy JSON to Clipboard (Common for both paths) ---
             try {
                 if (typeof Pasteboard === 'undefined' || !Pasteboard.general) {
-                    console.error("[DEBUG_V11.15] CRITICAL: Pasteboard.general is unavailable.");
-                    return "PLUGIN_ERROR: Pasteboard.general is not available to copy data to clipboard.";
+                    console.error("[DEBUG_V1.2.2] CRITICAL: Pasteboard.general is unavailable.");
+                    throw new Error ("PLUGIN_ERROR: Pasteboard.general is not available to copy data to clipboard.");
                 }
 
                 Pasteboard.general.string = jsonOutputString;
-                console.log("[DEBUG_V11.15] " + outputSummaryMessage);
-                return outputSummaryMessage; // Return success message
+                console.log("[DEBUG_V1.2.2] " + outputSummaryMessage);
+                // return outputSummaryMessage; // For async, result is handled by promise resolution
 
             } catch (error) {
-                console.error("[DEBUG_V11.15] ERROR during clipboard copy:", error.toString(), error.stack || "");
-                return `PLUGIN_ERROR: Failed to copy JSON to clipboard: ${error.message}. Stack: ${error.stack || 'N/A'}`;
+                console.error("[DEBUG_V1.2.2] ERROR during clipboard copy:", error.toString(), error.stack || "");
+                const alert = new Alert("Clipboard Error", `Failed to copy JSON to clipboard: ${error.message}`);
+                alert.show();
+                // throw error; // Re-throw to indicate failure to the caller if desired
             }
 
         } catch (e) { 
-            console.error("[DEBUG_V11.15] CRITICAL ERROR in action:", e.toString(), e.stack || "");
-            return `PLUGIN_ERROR: ${e.message}. Stack: ${e.stack || 'N/A'}`;
+            console.error("[DEBUG_V1.2.2] CRITICAL ERROR in action:", e.toString(), e.stack || "");
+            const alert = new Alert("Plugin Error", `An error occurred: ${e.message}. Check console for details.`);
+            alert.show();
+            // throw e; // Re-throw to indicate failure if this is the top level of the plugin action
         }
     });
 

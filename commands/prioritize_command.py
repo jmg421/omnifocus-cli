@@ -1,8 +1,8 @@
-from ..omnifocus_api import apple_script_client
-from ..omnifocus_api.data_models import OmniFocusTask
-from ..ai_integration import ai_utils
-from ..ai_integration.utils.format_utils import format_priority_recommendations
-from ..ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
+from omnifocus_api import apple_script_client
+from omnifocus_api.data_models import OmniFocusTask
+from ai_integration import ai_utils
+from ai_integration.utils.format_utils import format_priority_recommendations
+from ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
 import os
 import re
 from datetime import datetime

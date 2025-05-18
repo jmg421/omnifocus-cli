@@ -1,6 +1,6 @@
 from typing import List, Optional
-from ..omnifocus_api import apple_script_client
-from ..omnifocus_api.data_models import OmniFocusTask
+from omnifocus_api import apple_script_client
+from omnifocus_api.data_models import OmniFocusTask
 from rich.console import Console
 from rich.table import Table
 

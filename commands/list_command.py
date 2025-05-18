@@ -1,6 +1,6 @@
 import json
-from ..omnifocus_api import apple_script_client
-from ..ai_integration.utils.format_utils import format_task_list
+from omnifocus_api import apple_script_client
+from ai_integration.utils.format_utils import format_task_list
 import subprocess
 import tempfile
 import os
@@ -90,7 +90,7 @@ def handle_list_live_tasks_in_project(args):
 
     execute_omnifocus_applescript = None
     try:
-        from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
     except ImportError:
         print("Info: Using direct osascript call for AppleScript execution.")
 
@@ -186,7 +186,7 @@ def handle_list_live_projects(args):
 
     execute_omnifocus_applescript = None
     try:
-        from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
     except ImportError:
         print("Info: Using direct osascript call for AppleScript execution.")
 

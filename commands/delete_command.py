@@ -53,7 +53,7 @@ def handle_delete_project(args):
 
     execute_omnifocus_applescript = None
     try:
-        from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
     except ImportError:
         print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
 
@@ -128,7 +128,7 @@ def handle_delete_task(args):
 
     execute_omnifocus_applescript = None
     try:
-        from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
     except ImportError:
         print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
 

@@ -4,7 +4,7 @@ import recurring_ical_events
 import datetime
 import requests
 from dataclasses import dataclass
-from ..omnifocus_api.data_models import OmniFocusTask
+from omnifocus_api.data_models import OmniFocusTask
 from icalendar import Calendar
 from datetime import timedelta
 
