@@ -23,6 +23,12 @@ from omnifocus_api import test_evernote_export
 from omnifocus_api.apple_script_client import fetch_projects
 import json
 import csv # Add csv import
+import glob
+
+# === Default Paths ===
+def get_latest_json_export_path():
+    # Hardcode the latest export as the default
+    return "data/omnifocus_export_202505181057am.json"
 
 # Load environment variables
 load_env_vars()
@@ -585,13 +591,13 @@ def delete_task_command(
     })
     handle_delete_task(args)
 
-@app.command("query-export")
-def query_export_command(
+@app.command("query")
+def query_command(
+    query: str = typer.Argument("", help="Task ID or search string to look up in task names/notes. If blank, lists all tasks."),
     json_file: str = typer.Option(
-        # Default path changed to be more generic, user should specify
-        None, 
-        "--file", 
-        help="Path to the OmniFocus JSON or CSV export file."
+        get_latest_json_export_path(),
+        "--file",
+        help="Path to the OmniFocus JSON or CSV export file.",
     ),
     input_format: str = typer.Option(
         "json",
@@ -599,11 +605,16 @@ def query_export_command(
         help="Format of the input file ('json' or 'csv'). Default: 'json'."
     ),
     query_type: str = typer.Option(
-        "tasks", 
-        "--query-type", "-q", 
-        help="Type of item to query (tasks, projects, folders). Case sensitive for value, not for option name."
+        "tasks",
+        "--query-type", "-q",
+        help="Type of item to query (tasks, projects, folders). Case sensitive for value, not for option name. Default: 'tasks'."
     ),
-    item_id: Optional[str] = typer.Option(None, "--id", help="Get a specific item by ID."),
+    output_format: str = typer.Option(
+        "text",
+        "--output-format",
+        help="Output format (text, json). Default: 'text'."
+    ),
+    # Keep advanced filters for compatibility
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Filter by name (substring match)." ),
     project_id: Optional[str] = typer.Option(None, "--project-id", "-p", help="For tasks: filter by project ID."),
     folder_id: Optional[str] = typer.Option(None, "--folder-id", "-f", help="For projects: filter by folder ID."),
@@ -616,14 +627,13 @@ def query_export_command(
     completed_after: Optional[str] = typer.Option(None, "--completed-after", help="Filter by completed date after YYYY-MM-DD."),
     tag_ids: Optional[str] = typer.Option(None, "--tag-ids", help="Comma-separated Tag IDs (item must have ALL). Tasks only."),
     tag_ids_any: Optional[str] = typer.Option(None, "--tag-ids-any", help="Comma-separated Tag IDs (item must have ANY). Tasks only."),
-    output_format: str = typer.Option("text", "--output-format", help="Output format (text, json).")
 ):
     """
-    Loads and queries OmniFocus data from an export file (JSON or CSV).
+    Query OmniFocus data by Task ID or search string (default: tasks, text output).
+    If the query matches a Task/Project/Folder ID, returns that item. Otherwise, does a substring search in names/notes.
     """
-    if not json_file: # Backward compatibility if old default was assumed. Now --file is required.
-        # Check for default JSON path if --file is not given (for transition)
-        default_json_path = '/Users/johnmuirhead-gould/MasterPlan/data/omnifocus_export.json'
+    if not json_file:
+        default_json_path = 'data/omnifocus_export_202505180731am.json'
         if os.path.exists(default_json_path) and input_format.lower() == 'json':
             print(f"Warning: --file not specified, using default JSON path: {default_json_path}", file=sys.stderr)
             json_file = default_json_path
@@ -631,7 +641,6 @@ def query_export_command(
             print("Error: --file option is required.", file=sys.stderr)
             raise typer.Exit(code=1)
 
-    prepared_data = {}
     if input_format.lower() == "csv":
         print(f"Loading data from CSV: {json_file}", file=sys.stderr)
         prepared_data = load_and_prepare_data_from_csv(json_file)
@@ -645,32 +654,89 @@ def query_export_command(
         raise typer.Exit(code=1)
 
     if not prepared_data or not prepared_data.get("all_tasks"):
-        # Check projects_map as well if query_type could be projects/folders
         if not prepared_data.get("projects_map") and (query_type == "projects" or query_type == "folders"):
-             print("No data loaded or data is empty.", file=sys.stderr)
-             return
-        elif query_type == "tasks" and not prepared_data.get("all_tasks"): # only error for tasks if all_tasks specifically is the issue
+            print("No data loaded or data is empty.", file=sys.stderr)
+            return
+        elif query_type == "tasks" and not prepared_data.get("all_tasks"):
             print("No task data loaded or task data is empty.", file=sys.stderr)
             return
-        # Allow proceeding if, e.g. querying projects and projects_map is fine but all_tasks is empty
-
-    # ... rest of the query_export_command logic ...
-    # Ensure this part correctly handles potentially empty prepared_data.all_tasks etc.
-    # The query_prepared_data function itself should handle empty lists gracefully.
-
-    # Debug: Print counts from prepared_data
-    # print(f"Debug: Loaded {len(prepared_data.get('all_tasks', []))} tasks, {len(prepared_data.get('projects_map', {}))} projects.", file=sys.stderr)
-
 
     # Parse tag_ids and tag_ids_any from comma-separated strings to lists
     tag_ids_all_list = [tag.strip() for tag in tag_ids.split(',')] if tag_ids else None
     tag_ids_any_list = [tag.strip() for tag in tag_ids_any.split(',')] if tag_ids_any else None
 
+    def find_best_match(query, prepared_data):
+        """Return ('project', project_dict) if query matches a project by ID or name, ('task', task_dict) if exact match, or ('tasks', [task_dict, ...]) for substring matches."""
+        # Try project by ID
+        project = prepared_data.get('projects_map', {}).get(query)
+        if project:
+            return 'project', project
+        # Try project by name (case-insensitive, exact or substring)
+        for proj in prepared_data.get('projects_map', {}).values():
+            if proj.get('name', '').lower() == query.lower():
+                return 'project', proj
+        for proj in prepared_data.get('projects_map', {}).values():
+            if query.lower() in proj.get('name', '').lower():
+                return 'project', proj
+        # Try task by ID
+        for t in prepared_data.get('all_tasks', []):
+            if t.get('id') == query:
+                return 'task', t
+        # Try task by name (case-insensitive, exact)
+        for t in prepared_data.get('all_tasks', []):
+            if t.get('name', '').lower() == query.lower():
+                return 'task', t
+        # Substring match: collect all tasks where name or notes contain query
+        matches = []
+        for t in prepared_data.get('all_tasks', []):
+            name = t.get('name', '').lower()
+            notes = (t.get('notes') or t.get('note') or '').lower()
+            if query.lower() in name or query.lower() in notes:
+                matches.append(t)
+        if matches:
+            return 'tasks', matches
+        return None, None
+
+    # Determine if query is an ID (exact match) or a search string
+    item_id = None
+    search_name = name
+    best_type, best_item = (None, None)
+    if query:
+        best_type, best_item = find_best_match(query, prepared_data)
+        if best_type == 'project':
+            # Show project and its tasks, regardless of query_type
+            project = best_item
+            project_id = project.get('id')
+            project_tasks = get_tasks_for_project(project_id, prepared_data)
+            if output_format.lower() == 'json':
+                print(json.dumps({"project": project, "tasks": project_tasks}, indent=2))
+            else:
+                pretty_print_item(project, prepared_data)
+                if project_tasks:
+                    print(f"\nTasks in project '{project.get('name')}' ({len(project_tasks)}):\n" + "-"*60)
+                    for t in project_tasks:
+                        pretty_print_item(t, prepared_data)
+                else:
+                    print("\nNo tasks found in this project.")
+            return
+        elif best_type == 'task':
+            item_id = best_item.get('id')
+            search_name = None
+        elif best_type == 'tasks':
+            matches = best_item
+            if output_format.lower() == 'json':
+                print(json.dumps(matches, indent=2))
+            else:
+                print(f"Found {len(matches)} matching tasks:")
+                for t in matches:
+                    pretty_print_item(t, prepared_data)
+            return
+
     results = query_prepared_data(
         prepared_data,
         query_type=query_type,
         item_id_filter=item_id,
-        name_filter=name,
+        name_filter=search_name,
         project_id_filter=project_id,
         folder_id_filter=folder_id,
         status_filter=status,
@@ -687,66 +753,53 @@ def query_export_command(
         print("No items found matching the criteria.")
         return
 
-    # ---- START TEMP DEBUG ----
-    # if results and results[0].get("id") == "90.1.1":
-    #     print(f"DEBUG Query Export - Task 90.1.1 found: {results[0]}", file=sys.stderr)
-    #     project_90_info = prepared_data.get("projects_map", {}).get("90")
-    #     print(f"DEBUG Query Export - Project 90 info from map: {project_90_info}", file=sys.stderr)
-    # ---- END TEMP DEBUG ----
-
     if output_format.lower() == "json":
         print(json.dumps(results, indent=2))
     elif output_format.lower() == "text":
-        print(f"Found {len(results)} {query_type}:")
-        for item in results:
-            item_name = item.get("name", "Unnamed Item")
-            item_id_disp = item.get("id", "No ID")
-            # Attempt to get type from item, fallback to query_type
-            actual_item_type = item.get("type", query_type)
-            if query_type.endswith('s') and actual_item_type == query_type: # e.g. query_type='tasks', actual_item_type could be 'Task'
-                item_type_disp = actual_item_type[:-1].capitalize()
-            else:
-                item_type_disp = actual_item_type.capitalize()
-
-            line = f"- Type: {item_type_disp}, Name: {item_name}, ID: {item_id_disp}"
-            if item.get("status"):
-                 line += f", Status: {item.get('status')}"
-            
-            # Dates for tasks and projects
-            if actual_item_type.lower() in ["task", "action", "project"]:
-                if item.get("dueDate"):
-                    line += f", Due: {get_item_date(item.get('dueDate'))}"
-                if item.get("deferDate"):
-                    line += f", Defer: {get_item_date(item.get('deferDate'))}"
-                if item.get("completedDate"):
-                    line += f", Completed: {get_item_date(item.get('completedDate'))}"
-
-            # Context & Tags for tasks
-            if actual_item_type.lower() in ["task", "action"]:
-                if item.get("projectId"):
-                    project_id_val = item['projectId']
-                    project_info = prepared_data.get("projects_map", {}).get(project_id_val, {})
-                    project_name = project_info.get("name", "Unknown Project")
-                    line += f" [Project: {project_name} (ID: {project_id_val})]"
-                    # Display folder of the project if available
-                    folder_id_val_for_project = project_info.get("folderId") # CSV projects don't have folderId yet
-                    if folder_id_val_for_project:
-                        folder_info = prepared_data.get("folders_map", {}).get(folder_id_val_for_project, {})
+        if len(results) == 1 and (item_id or search_name):
+            pretty_print_item(results[0], prepared_data)
+        else:
+            print(f"Found {len(results)} {query_type}:")
+            for item in results:
+                item_name = item.get("name", "Unnamed Item")
+                item_id_disp = item.get("id", "No ID")
+                actual_item_type = item.get("type", query_type)
+                if query_type.endswith('s') and actual_item_type == query_type:
+                    item_type_disp = actual_item_type[:-1].capitalize()
+                else:
+                    item_type_disp = actual_item_type.capitalize()
+                line = f"- Type: {item_type_disp}, Name: {item_name}, ID: {item_id_disp}"
+                if item.get("status"):
+                    line += f", Status: {item.get('status')}"
+                if actual_item_type.lower() in ["task", "action", "project"]:
+                    if item.get("dueDate"):
+                        line += f", Due: {get_item_date(item.get('dueDate'))}"
+                    if item.get("deferDate"):
+                        line += f", Defer: {get_item_date(item.get('deferDate'))}"
+                    if item.get("completedDate"):
+                        line += f", Completed: {get_item_date(item.get('completedDate'))}"
+                if actual_item_type.lower() in ["task", "action"]:
+                    if item.get("projectId"):
+                        project_id_val = item['projectId']
+                        project_info = prepared_data.get("projects_map", {}).get(project_id_val, {})
+                        project_name = project_info.get("name", "Unknown Project")
+                        line += f" [Project: {project_name} (ID: {project_id_val})]"
+                        folder_id_val_for_project = project_info.get("folderId")
+                        if folder_id_val_for_project:
+                            folder_info = prepared_data.get("folders_map", {}).get(folder_id_val_for_project, {})
+                            folder_name = folder_info.get("name", "Unknown Folder")
+                            line += f" (In Folder: {folder_name} (ID: {folder_id_val_for_project}))"
+                    if item.get("parentId"):
+                        line += f" [ParentTaskID: {item.get('parentId')}]"
+                    if item.get("tagIds"):
+                        line += f" [TagIDs: {', '.join(item.get('tagIds', []))}]"
+                elif actual_item_type.lower() == "project":
+                    if item.get("folderId"):
+                        folder_id_val = item['folderId']
+                        folder_info = prepared_data.get("folders_map", {}).get(folder_id_val, {})
                         folder_name = folder_info.get("name", "Unknown Folder")
-                        line += f" (In Folder: {folder_name} (ID: {folder_id_val_for_project}))"
-                if item.get("parentId"):
-                    line += f" [ParentTaskID: {item.get('parentId')}]"
-                if item.get("tagIds"):
-                    line += f" [TagIDs: {', '.join(item.get('tagIds', []))}]"
-            
-            # Context for projects
-            elif actual_item_type.lower() == "project":
-                if item.get("folderId"):
-                    folder_id_val = item['folderId']
-                    folder_info = prepared_data.get("folders_map", {}).get(folder_id_val, {})
-                    folder_name = folder_info.get("name", "Unknown Folder")
-                    line += f" [Folder: {folder_name} (ID: {folder_id_val})]"
-            print(line)
+                        line += f" [Folder: {folder_name} (ID: {folder_id_val})]"
+                print(line)
     else:
         print(f"Error: Unknown output format '{output_format}'.", file=sys.stderr)
         raise typer.Exit(code=1)
@@ -1490,6 +1543,76 @@ def categorize_tasks_command(
     if sample_count == 0:
         print("No tasks found in the 'Reference (Inbox Archive Candidate)' category to sample.")
 
+@app.command("summary")
+def summary_command(
+    json_file: str = typer.Option(
+        "data/omnifocus_export_202505180731am.json",
+        "--file",
+        help="Path to the OmniFocus JSON export file.",
+        exists=True, readable=True, file_okay=True, dir_okay=False
+    )
+):
+    """
+    Print a summary of the number of tasks, projects, folders, and tags in the given OmniFocus JSON export.
+    """
+    data = load_and_prepare_omnifocus_data(json_file)
+    if not data:
+        print(f"Error: Could not load or parse data from {json_file}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    print(f"Summary for {json_file}:")
+    print(f"  Tasks:   {len(data['all_tasks'])}")
+    print(f"  Projects: {len(data['projects_map'])}")
+    print(f"  Folders:  {len(data['folders_map'])}")
+    print(f"  Tags:     {len(data['tags_map'])}")
+
+def pretty_print_item(item: dict, prepared_data: dict) -> None:
+    """Pretty-print a single task, project, or folder in a human-readable format."""
+    item_type = item.get("type", "Task").capitalize()
+    print(f"{'='*60}")
+    print(f"{item_type} Details")
+    print(f"{'='*60}")
+    print(f"Name:      {item.get('name', 'Unnamed')}")
+    print(f"ID:        {item.get('id', 'N/A')}")
+    if item.get("status"):
+        print(f"Status:    {item.get('status')}")
+    if item.get("completed") is not None:
+        print(f"Completed: {item.get('completed')}")
+    if item.get("dueDate"):
+        print(f"Due:       {item.get('dueDate')}")
+    if item.get("deferDate"):
+        print(f"Defer:     {item.get('deferDate')}")
+    if item.get("completedDate"):
+        print(f"Completed: {item.get('completedDate')}")
+    if item.get("flagged") is not None:
+        print(f"Flagged:   {item.get('flagged')}")
+    if item.get("estimatedMinutes"):
+        print(f"Est. Min.: {item.get('estimatedMinutes')}")
+    if item.get("projectId"):
+        project_id_val = item['projectId']
+        project_info = prepared_data.get("projects_map", {}).get(project_id_val, {})
+        project_name = project_info.get("name", "Unknown Project")
+        print(f"Project:   {project_name} (ID: {project_id_val})")
+        folder_id_val = project_info.get("folderId")
+        if folder_id_val:
+            folder_info = prepared_data.get("folders_map", {}).get(folder_id_val, {})
+            folder_name = folder_info.get("name", "Unknown Folder")
+            print(f"  Folder:  {folder_name} (ID: {folder_id_val})")
+    if item.get("parentId"):
+        print(f"Parent:    {item.get('parentId')}")
+    if item.get("tagIds"):
+        print(f"Tags:      {', '.join(item.get('tagIds', []))}")
+    if item.get("permalink"):
+        print(f"Permalink: {item.get('permalink')}")
+    # Print notes, parsing embedded \n as real newlines
+    notes = item.get("notes") or item.get("note")
+    if notes:
+        print(f"{'-'*60}\nNotes:")
+        print(notes.replace('\\n', '\n'))
+    print(f"{'='*60}")
+
+def get_tasks_for_project(project_id: str, prepared_data: dict) -> list:
+    """Return all tasks belonging to a project, top-level only (not subtasks)."""
+    return [t for t in prepared_data.get("all_tasks", []) if t.get("projectId") == project_id and not t.get("parentId")]
 
 if __name__ == "__main__":
     app() 
