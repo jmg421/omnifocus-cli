@@ -20,15 +20,20 @@ except ImportError:
 from utils import load_env_vars
 from enum import Enum
 from omnifocus_api import test_evernote_export
-from omnifocus_api.apple_script_client import fetch_projects
+from omnifocus_api.apple_script_client import fetch_projects_from_json
 import json
 import csv # Add csv import
 import glob
 
 # === Default Paths ===
 def get_latest_json_export_path():
-    # Hardcode the latest export as the default
-    return "data/omnifocus_export_202505181057am.json"
+    # Find all matching export files
+    files = glob.glob('data/omnifocus_export_*.json')
+    if not files:
+        return None
+    # Sort by modification time, descending
+    files.sort(key=os.path.getmtime, reverse=True)
+    return files[0]
 
 # Load environment variables
 load_env_vars()
@@ -348,6 +353,7 @@ from commands.cleanup_command import handle_cleanup
 from commands.search_command import handle_search
 from commands.merge_command import handle_merge_projects
 from commands.delete_command import handle_delete_project, handle_delete_task
+from commands.next_command import handle_next
 
 @app.command("add")
 def add(
@@ -397,14 +403,23 @@ def list_tasks(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Filter tasks by project."),
     search: Optional[str] = typer.Option(None, "--search", "-s", help="Search for tasks containing text."),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format."),
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
 ):
-    """List tasks or projects from OmniFocus."""
-    args = type('Args', (), {
-        'project': project,
-        'search': search,
-        'json': json_output
-    })
-    handle_list(args)
+    """List tasks or projects from OmniFocus export file."""
+    data = load_and_prepare_omnifocus_data(file)
+    tasks = data.get('all_tasks', [])
+    # Filter by project if specified
+    if project:
+        tasks = [t for t in tasks if t.get('projectId') and data['projects_map'].get(t['projectId'], {}).get('name') == project]
+    # Filter by search if specified
+    if search:
+        tasks = [t for t in tasks if search.lower() in t.get('name', '').lower() or search.lower() in t.get('note', '').lower()]
+    if json_output:
+        import json
+        print(json.dumps(tasks, indent=2))
+    else:
+        for t in tasks:
+            print(f"- {t.get('name')} (Project: {data['projects_map'].get(t.get('projectId'), {}).get('name', 'None')}){' [FLAGGED]' if t.get('flagged') else ''}{' [DUE: ' + t.get('dueDate') + ']' if t.get('dueDate') else ''}")
 
 @app.command("complete")
 def complete(
@@ -531,9 +546,11 @@ def search(
     handle_search(args)
 
 @app.command("list-projects")
-def list_projects():
+def list_projects(
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
+):
     """List all project names in OmniFocus (fast)."""
-    projects = fetch_projects()
+    projects = fetch_projects_from_json(file)
     if not projects:
         print("No projects found or error fetching projects.")
         return
@@ -562,12 +579,8 @@ def create_project_command(
     title: str = typer.Option(..., "--title", "-t", help="Title of the new project."),
     folder_name: Optional[str] = typer.Option(None, "--folder", "-f", help="Optional folder to create the project in.")
 ):
-    """Create a new project in OmniFocus, optionally within a specified folder."""
-    args = type('Args', (), {
-        'title': title,
-        'folder_name': folder_name
-    })
-    handle_create_project(args)
+    """Creates a new project, optionally within a specified folder."""
+    handle_create_project(title=title, folder_name=folder_name)
 
 # New delete-project command
 @app.command("delete-project")
@@ -806,19 +819,18 @@ def query_command(
 
 @app.command("list-live-tasks")
 def list_live_tasks_command(
-    project_name: str = typer.Option(..., "--project-name", "-p", help="Name of the project to list tasks from.")
+    project_name: str = typer.Option(..., "--project-name", "-p", help="Name of the project to list tasks from."),
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
 ):
-    """List tasks directly from an OmniFocus project with live data."""
-    args = type('Args', (), {
-        'project_name': project_name
-    })
-    handle_list_live_tasks_in_project(args)
+    # Implementation should use the file argument to load data
+    pass  # Replace with actual logic
 
 @app.command("list-live-projects")
-def list_live_projects_command():
-    """List all projects with details (ID, name, folder, status) directly from OmniFocus."""
-    args = None
-    handle_list_live_projects(args)
+def list_live_projects_command(
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
+):
+    # Implementation should use the file argument to load data
+    pass  # Replace with actual logic
 
 @app.command("add-calendar-event")
 def add_calendar_event_command(
@@ -826,9 +838,12 @@ def add_calendar_event_command(
     start_date: str = typer.Option(..., "--start-date", help="Start date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
     end_date: str = typer.Option(..., "--end-date", help="End date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
     notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Optional notes for the event."),
-    calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to first writable calendar.")
+    calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to 'John' (iCloud) if not specified.")
 ):
     """Add a new event to Apple Calendar."""
+    # Default to 'John' if calendar_name is not provided
+    if not calendar_name:
+        calendar_name = "John"
     args = type('Args', (), {
         'title': title,
         'start_date': start_date,
@@ -1613,6 +1628,13 @@ def pretty_print_item(item: dict, prepared_data: dict) -> None:
 def get_tasks_for_project(project_id: str, prepared_data: dict) -> list:
     """Return all tasks belonging to a project, top-level only (not subtasks)."""
     return [t for t in prepared_data.get("all_tasks", []) if t.get("projectId") == project_id and not t.get("parentId")]
+
+@app.command("next")
+def next_command():
+    """
+    Shows a focused list of next actions to reduce overwhelm.
+    """
+    handle_next(None) # No arguments are passed for now
 
 if __name__ == "__main__":
     app() 
