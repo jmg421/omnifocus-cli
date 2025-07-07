@@ -5,10 +5,26 @@ from datetime import datetime, date
 from typing import Optional, Any, Dict, List
 
 def get_latest_json_export_path():
-    files = [f for f in os.listdir('data') if f.startswith('omnifocus_export_') and f.endswith('.json')]
+    # Look in ../data relative to omni-cli directory
+    data_dir = '../data'
+    if not os.path.exists(data_dir):
+        data_dir = 'data'  # Fallback to local data directory
+    
+    try:
+        all_files = os.listdir(data_dir)
+    except OSError:
+        return None
+    
+    # Look for both timestamped exports and the main export file
+    files = []
+    for f in all_files:
+        if f.endswith('.json') and (f.startswith('omnifocus_export_') or f == 'omnifocus_export.json'):
+            files.append(os.path.join(data_dir, f))
+    
     if not files:
         return None
-    files = [os.path.join('data', f) for f in files]
+    
+    # Sort by modification time, descending (most recent first)
     files.sort(key=os.path.getmtime, reverse=True)
     return files[0]
 
@@ -41,6 +57,36 @@ def load_and_prepare_omnifocus_data(json_file_path: str) -> Dict[str, Any]:
     except json.JSONDecodeError:
         print(f"Error: Could not decode JSON from {json_file_path}", file=sys.stderr)
         return {}
+    
+    # Check if this is the new flat format (has direct 'tasks' array)
+    if 'tasks' in raw_data and isinstance(raw_data['tasks'], list):
+        # New flat format - tasks, projects, folders are at top level
+        all_tasks = raw_data.get('tasks', []) + raw_data.get('inboxTasks', [])
+        projects_map = {}
+        folders_map = {}
+        
+        # Convert projects dict to map if needed
+        projects_data = raw_data.get('projects', {})
+        if isinstance(projects_data, dict):
+            projects_map = projects_data
+        elif isinstance(projects_data, list):
+            projects_map = {p.get('id'): p for p in projects_data if p.get('id')}
+        
+        # Convert folders dict to map if needed  
+        folders_data = raw_data.get('folders', {})
+        if isinstance(folders_data, dict):
+            folders_map = folders_data
+        elif isinstance(folders_data, list):
+            folders_map = {f.get('id'): f for f in folders_data if f.get('id')}
+            
+        return {
+            "all_tasks": all_tasks,
+            "projects_map": projects_map,
+            "folders_map": folders_map,
+            "tags_map": raw_data.get("tags", {}),
+        }
+    
+    # Original nested format processing
     tasks_dict: Dict[str, Dict[str, Any]] = {}
     projects_dict: Dict[str, Dict[str, Any]] = {}
     folders_dict: Dict[str, Dict[str, Any]] = {}
