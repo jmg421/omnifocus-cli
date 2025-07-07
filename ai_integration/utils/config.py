@@ -38,3 +38,26 @@ def get_config():
     _config_cache = config_dict
     return _config_cache
 
+def save_config(new_config):
+    """
+    Saves the provided config dictionary back to the config.json file.
+    """
+    global _config_cache
+    config_path = Path(__file__).parent.parent.parent / "config.json"
+    
+    # Read existing config to not overwrite unrelated values
+    current_config = {}
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as cf:
+            current_config = json.load(cf)
+
+    # Update with new values
+    current_config.update(new_config)
+
+    # Write back to file
+    with open(config_path, "w", encoding="utf-8") as cf:
+        json.dump(current_config, cf, indent=4)
+
+    # Invalidate the cache
+    _config_cache = None
+

@@ -1,34 +1,30 @@
 from typing import List, Optional
-from omnifocus_api import apple_script_client
-from omnifocus_api.data_models import OmniFocusTask
 from rich.console import Console
 from rich.table import Table
-
-def search_tasks(query: str, project: Optional[str] = None) -> List[OmniFocusTask]:
-    """Search for tasks matching the query."""
-    tasks = apple_script_client.fetch_tasks(project_name=project)
-    if not tasks:
-        return []
-    
-    query = query.lower()
-    return [
-        task for task in tasks
-        if query in task.name.lower() or
-           (task.note and query in task.note.lower())
-    ]
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 def handle_search(args):
     """
-    Search for tasks and display their IDs and details.
+    Search tasks from the JSON export by project and/or search text.
     """
-    console = Console()
-    query = args.query
-    project = args.project
+    file = getattr(args, 'file', None) or get_latest_json_export_path()
+    data = load_and_prepare_omnifocus_data(file)
+    if not data or not data.get("all_tasks"):
+        print(f"No tasks found in {file}")
+        return
+    project = getattr(args, 'project', None)
+    query = getattr(args, 'query', None)
+    tasks = [t for t in data["all_tasks"] if (not project or t.get("projectId") == project)]
+    if query:
+        tasks = [t for t in tasks if query.lower() in t.get("name", "").lower() or query.lower() in t.get("note", "").lower()]
+    for t in tasks:
+        print(f"- {t.get('name')} (ID: {t.get('id')})")
 
-    print(f"Searching for tasks matching '{query}'...")
-    matching_tasks = search_tasks(query, project)
-    
-    if not matching_tasks:
+    console = Console()
+    if not tasks:
         print("No matching tasks found.")
         if project:
             print(f"Note: Search was limited to project '{project}'")
@@ -41,7 +37,7 @@ def handle_search(args):
     table.add_column("Due Date", style="yellow")
     table.add_column("Status", style="magenta")
     
-    for task in matching_tasks:
+    for task in tasks:
         status = "✓" if task.completed else " "
         due = task.due_date if task.due_date else "-"
         table.add_row(
@@ -52,4 +48,4 @@ def handle_search(args):
         )
     
     console.print(table)
-    print(f"\nFound {len(matching_tasks)} matching tasks") 
+    print(f"\nFound {len(tasks)} matching tasks") 

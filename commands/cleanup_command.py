@@ -4,7 +4,6 @@ from enum import Enum
 from omnifocus_api import apple_script_client
 from omnifocus_api.data_models import OmniFocusTask
 from datetime import datetime, timedelta
-from .prioritize_command import get_tasks_for_prioritization # Assuming same directory structure
 from ai_integration.utils.prompt_utils import confirm_action
 
 def get_user_input(prompt: str, valid_options: list) -> str:
@@ -35,6 +34,7 @@ def handle_cleanup(args):
     """
     Interactive cleanup of overdue, flagged, and inbox items.
     """
+    print("Cleanup and task completion are now handled via OmniFocus-MCP. Please use that tool for these operations.")
     mode = args.mode
     batch_size = args.batch
     

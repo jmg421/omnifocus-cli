@@ -8,7 +8,9 @@ from omnifocus_api.data_models import OmniFocusTask
 from ai_integration.openai_client import openai_completion
 from ai_integration.anthropic_client import anthropic_completion
 from ai_integration.utils.format_utils import format_task_list
-from .prioritize_command import get_tasks_for_prioritization
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 # Define categories for task classification
 CATEGORIES = {
@@ -208,23 +210,23 @@ end tell
 
 def handle_audit(args):
     """
-    Analyzes OmniFocus tasks and provides categorization for cleanup.
+    Analyze tasks from the JSON export, optionally filtered by project.
     """
-    limit = args.limit
-    project_name = args.project
-    export_references = args.export
+    file = getattr(args, 'file', None) or get_latest_json_export_path()
+    data = load_and_prepare_omnifocus_data(file)
+    if not data or not data.get("all_tasks"):
+        print(f"No tasks found in {file}")
+        return
+    project = getattr(args, 'project', None)
+    tasks = [t for t in data["all_tasks"] if (not project or t.get("projectId") == project)]
     
     # Check for cleanup script generation if it's set in args
     generate_script = getattr(args, 'generate_script', False)
     
-    # Fetch tasks from OmniFocus
-    print(f"Fetching tasks from OmniFocus{' for project: ' + project_name if project_name else ''}...")
-    tasks = apple_script_client.fetch_tasks(project_name=project_name)
-    
     # Limit the number of tasks if needed
-    if limit and len(tasks) > limit:
-        print(f"Limiting analysis to {limit} tasks (out of {len(tasks)} total).")
-        tasks = tasks[:limit]
+    if args.limit and len(tasks) > args.limit:
+        print(f"Limiting analysis to {args.limit} tasks (out of {len(tasks)} total).")
+        tasks = tasks[:args.limit]
     
     if not tasks:
         print("No tasks found to analyze.")
@@ -260,7 +262,7 @@ def handle_audit(args):
                 print(f"... and {len(cat_tasks)-10} more.")
     
     # Export reference items if requested
-    if export_references and categorized_tasks["REFERENCE"]:
+    if args.export and categorized_tasks["REFERENCE"]:
         export_path = generate_export_file(categorized_tasks["REFERENCE"])
         print(f"\nExported {len(categorized_tasks['REFERENCE'])} reference items to {export_path}")
     
