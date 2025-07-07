@@ -2,6 +2,7 @@ import os
 import traceback
 import openai
 from .utils.config import get_config
+from .utils.consent import check_ai_consent
 from openai import OpenAI
 
 def openai_completion(prompt: str) -> str:
@@ -9,57 +10,62 @@ def openai_completion(prompt: str) -> str:
     Calls OpenAI's ChatCompletion API (GPT-3.5 or GPT-4) with the given prompt.
     Returns the model's response text.
     """
-    # Try to load API key 
-    cfg = get_config()
-    api_key = os.environ.get("OPENAI_API_KEY", cfg.get("OPENAI_API_KEY", ""))
-    
-    # If we have an API key, try to use it
-    if api_key:
-        try:
-            print("Creating OpenAI client...")
-            # Create a new client instance with only the required parameters
-            # Handle older OpenAI versions differently
-            try:
-                client = OpenAI(api_key=api_key)
-                
-                print("Calling completions API...")
-                # Call the completion API with newer OpenAI client
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",  # or "gpt-4" for more advanced reasoning
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant for OmniFocus task management."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=1000
-                )
-            except TypeError:
-                # Older OpenAI client version
-                openai.api_key = api_key
-                
-                print("Using older OpenAI client...")
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant for OmniFocus task management."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=1000
-                )
-            
-            print("Successfully received response from OpenAI")
-            # Handle different response formats between old and new OpenAI versions
-            try:
-                # New version
-                return response.choices[0].message.content
-            except AttributeError:
-                # Old version
-                return response.choices[0]["message"]["content"]
-        except Exception as e:
-            print(f"Error calling OpenAI API: {e}")
-            print("Falling back to mock responses")
-            # Fall through to mock responses
+    # Check for user consent before proceeding
+    if not check_ai_consent():
+        # Fall through to mock responses if consent is not given
+        print("Falling back to mock responses.")
     else:
-        print("OpenAI API key not found, using mock responses")
+        # Try to load API key 
+        cfg = get_config()
+        api_key = os.environ.get("OPENAI_API_KEY", cfg.get("OPENAI_API_KEY", ""))
+        
+        # If we have an API key, try to use it
+        if api_key:
+            try:
+                print("Creating OpenAI client...")
+                # Create a new client instance with only the required parameters
+                # Handle older OpenAI versions differently
+                try:
+                    client = OpenAI(api_key=api_key)
+                    
+                    print("Calling completions API...")
+                    # Call the completion API with newer OpenAI client
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",  # or "gpt-4" for more advanced reasoning
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant for OmniFocus task management."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        max_tokens=1000
+                    )
+                except TypeError:
+                    # Older OpenAI client version
+                    openai.api_key = api_key
+                    
+                    print("Using older OpenAI client...")
+                    response = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant for OmniFocus task management."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        max_tokens=1000
+                    )
+                
+                print("Successfully received response from OpenAI")
+                # Handle different response formats between old and new OpenAI versions
+                try:
+                    # New version
+                    return response.choices[0].message.content
+                except AttributeError:
+                    # Old version
+                    return response.choices[0]["message"]["content"]
+            except Exception as e:
+                print(f"Error calling OpenAI API: {e}")
+                print("Falling back to mock responses")
+                # Fall through to mock responses
+        else:
+            print("OpenAI API key not found, using mock responses")
     
     # Mock responses for different request types
     if "Task Deduplication Request" in prompt:

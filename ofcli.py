@@ -17,13 +17,13 @@ except ImportError:
     # This might suppress more urllib3 warnings than intended, but should catch the SSL one.
     warnings.filterwarnings('ignore', message=".*OpenSSL 1.1.1+.*")
 
-from utils import load_env_vars
+from ofcli_utils import load_env_vars
 from enum import Enum
 from omnifocus_api import test_evernote_export
-from omnifocus_api.apple_script_client import fetch_projects_from_json
 import json
 import csv # Add csv import
 import glob
+from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 # === Default Paths ===
 def get_latest_json_export_path():
@@ -82,102 +82,67 @@ def load_and_prepare_omnifocus_data(json_file_path: str) -> Dict[str, Any]:
         return {}
 
     # Initialize collections
-    # Using dictionaries for tasks, projects, folders to ensure uniqueness by ID initially
-    # and for easy lookup. We'll convert tasks to a list at the end.
     tasks_dict: Dict[str, Dict[str, Any]] = {}
     projects_dict: Dict[str, Dict[str, Any]] = {}
     folders_dict: Dict[str, Dict[str, Any]] = {}
 
-    # Helper function to process a task and its children
     def process_task(task_data: Dict[str, Any], project_id: Optional[str] = None, parent_task_id: Optional[str] = None):
         if not task_data or not isinstance(task_data, dict) or not task_data.get('id'):
             return
-
         task_id = task_data['id']
-        # Create a mutable copy and augment it
         task_copy = task_data.copy()
         task_copy.setdefault('name', f'Unnamed Task {task_id}')
         if project_id:
             task_copy['projectId'] = project_id
         if parent_task_id:
             task_copy['parentId'] = parent_task_id
-        task_copy['_source'] = 'project' if project_id else 'inbox' # or other sources if applicable
-        
+        task_copy['_source'] = 'project' if project_id else 'inbox'
         tasks_dict[task_id] = task_copy
-
-        # Process child tasks recursively
+        # Recursively process children if present
         children = task_data.get("children", [])
         if isinstance(children, list):
             for child_task_data in children:
                 process_task(child_task_data, project_id, parent_task_id=task_id)
 
-    # Helper function to process a project and its tasks
     def process_project(project_data: Dict[str, Any], folder_id: Optional[str] = None):
         if not project_data or not isinstance(project_data, dict) or not project_data.get('id'):
             return
-        
         project_id = project_data['id']
         project_copy = project_data.copy()
         project_copy.setdefault('name', f'Unnamed Project {project_id}')
         if folder_id:
             project_copy['folderId'] = folder_id
-        
         projects_dict[project_id] = project_copy
-
         # Process tasks within this project
         project_tasks_list = project_data.get("tasks", [])
         if isinstance(project_tasks_list, list):
             for task_data in project_tasks_list:
                 process_task(task_data, project_id=project_id)
 
-    # Helper function to process a folder and its contents (sub-folders and projects)
     def process_folder(folder_data: Dict[str, Any], parent_folder_id: Optional[str] = None):
         if not folder_data or not isinstance(folder_data, dict) or not folder_data.get('id'):
             return
-
         folder_id = folder_data['id']
         folder_copy = folder_data.copy()
         folder_copy.setdefault('name', f'Unnamed Folder {folder_id}')
         if parent_folder_id:
-            folder_copy['parentFolderID'] = parent_folder_id # Match key from JSON
-        
+            folder_copy['parentFolderID'] = parent_folder_id
         folders_dict[folder_id] = folder_copy
+        # No subfolders or projects in this export, but keep for future compatibility
 
-        # Process sub-folders recursively
-        sub_folders_list = folder_data.get("folders", [])
-        if isinstance(sub_folders_list, list):
-            for sub_folder_data in sub_folders_list:
-                process_folder(sub_folder_data, parent_folder_id=folder_id)
-        
-        # Process projects within this folder
-        folder_projects_list = folder_data.get("projects", [])
-        if isinstance(folder_projects_list, list):
-            for project_data in folder_projects_list:
-                process_project(project_data, folder_id=folder_id)
+    # --- Updated processing for new export structure ---
+    # Process all folders
+    folders = raw_data.get("folders", {})
+    if isinstance(folders, dict):
+        for folder in folders.values():
+            process_folder(folder)
+    # Process all projects
+    projects = raw_data.get("projects", {})
+    if isinstance(projects, dict):
+        for project in projects.values():
+            process_project(project, folder_id=project.get("folderID"))
+    # No inboxItems or structure in this export
 
-    # --- Start processing from the root of the JSON data --- 
-
-    # Process Inbox Items (these are tasks)
-    inbox_items_list = raw_data.get("inboxItems", [])
-    if isinstance(inbox_items_list, list):
-        for task_data in inbox_items_list:
-            process_task(task_data) # No project_id for inbox tasks by default
-
-    # Process items within the "structure" key
-    structure = raw_data.get("structure", {})
-    if isinstance(structure, dict):
-        # Process Top Level Projects
-        top_level_projects_list = structure.get("topLevelProjects", [])
-        if isinstance(top_level_projects_list, list):
-            for project_data in top_level_projects_list:
-                process_project(project_data) # No folder_id for top-level projects by default
-
-        # Process Top Level Folders (which can contain projects and sub-folders)
-        top_level_folders_list = structure.get("topLevelFolders", [])
-        if isinstance(top_level_folders_list, list):
-            for folder_data in top_level_folders_list:
-                process_folder(folder_data) # No parent_folder_id for top-level folders
-    
     return {
         "all_tasks": list(tasks_dict.values()),
         "projects_map": projects_dict,
@@ -343,7 +308,7 @@ app = typer.Typer(
 from commands.add_command import handle_add, handle_add_detailed_task, handle_create_project
 from commands.list_command import handle_list, handle_list_live_tasks_in_project, handle_list_live_projects
 from commands.complete_command import handle_complete
-from commands.prioritize_command import handle_prioritize
+from commands.prioritize_command import prioritize as prioritize_command
 from commands.delegation_command import handle_delegation
 from commands.audit_command import handle_audit
 from commands.calendar_command import handle_calendar, handle_add_calendar_event
@@ -437,15 +402,10 @@ def prioritize(
     limit: int = typer.Option(10, "--limit", "-l", help="Number of tasks to include in AI prioritization."),
     finance: bool = typer.Option(False, "--finance", "-f", help="Focus on organizing and simplifying finance-related tasks."),
     deduplicate: bool = typer.Option(False, "--deduplicate", "-d", help="Find and suggest consolidation of duplicate tasks."),
+    file: Optional[str] = typer.Option(None, "--file", help="Path to the OmniFocus JSON export file.")
 ):
     """Use AI to prioritize tasks in OmniFocus."""
-    args = type('Args', (), {
-        'project': project,
-        'limit': limit,
-        'finance': finance,
-        'deduplicate': deduplicate
-    })
-    handle_prioritize(args)
+    prioritize_command(file=file, project=project, limit=limit, finance=finance, deduplicate=deduplicate)
 
 @app.command("delegate")
 def delegate(

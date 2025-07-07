@@ -32,7 +32,7 @@ def find_duplicate_tasks(tasks: List[OmniFocusTask]) -> List[Tuple[OmniFocusTask
     normalized_tasks = []
     for task in tasks:
         # Remove common prefixes, suffixes, and normalize spacing
-        normalized_name = re.sub(r'^\s*(\[.*?\]|\(.*?\))\s*', '', task.name)
+        normalized_name = re.sub(r'^\s*(\[.*?\]|\(.*?\))\s*', '', task.get('name'))
         normalized_name = re.sub(r'\s*(\[.*?\]|\(.*?\))\s*$', '', normalized_name)
         normalized_name = normalized_name.lower().strip()
         normalized_tasks.append((normalized_name, task))
@@ -78,12 +78,12 @@ def extract_task_contexts(tasks: List[OmniFocusTask]) -> Dict[str, List[OmniFocu
     no_due_date = []
     
     for task in tasks:
-        if not task.due_date:
+        if not task.get('dueDate'):
             no_due_date.append(task)
             continue
             
         try:
-            due_date = datetime.fromisoformat(task.due_date.replace('Z', '+00:00')).date()
+            due_date = datetime.fromisoformat(task.get('dueDate').replace('Z', '+00:00')).date()
             days_until_due = (due_date - today).days
             
             if days_until_due <= 0:
@@ -116,14 +116,31 @@ def create_prioritization_prompt(tasks: List[OmniFocusTask], contexts: Dict[str,
     """
     Creates a prompt for the AI to prioritize tasks.
     """
+    # Before building the main task list for the AI prompt, filter and sort tasks as follows:
+    # - Inbox tasks: no projectId or explicitly marked as inbox
+    # - Flagged tasks: flagged == True
+    # - Overdue tasks: dueDate < today and not completed
+    # - Sort each group in reverse chronological order (by createdDate, addedDate, or dueDate descending)
+    # - Present these groups at the top of the prompt, then the rest of the tasks
+    
+    # Filter tasks
+    inbox_tasks = [task for task in tasks if not task.get('project') or task.get('project') == 'Inbox']
+    flagged_tasks = [task for task in tasks if task.get('flagged') == True]
+    overdue_tasks = [task for task in tasks if task.get('dueDate') and datetime.fromisoformat(task.get('dueDate').replace('Z', '+00:00')).date() < datetime.now().date() and not task.get('completed')]
+    
+    # Sort tasks
+    inbox_tasks.sort(key=lambda task: task.get('createdDate') or task.get('addedDate') or task.get('dueDate'), reverse=True)
+    flagged_tasks.sort(key=lambda task: task.get('createdDate') or task.get('addedDate') or task.get('dueDate'), reverse=True)
+    overdue_tasks.sort(key=lambda task: task.get('createdDate') or task.get('addedDate') or task.get('dueDate'), reverse=True)
+    
     # Build task details
     task_details = []
     for i, task in enumerate(tasks):
-        due_date_str = f", Due: {task.due_date}" if task.due_date else ""
-        project_str = f", Project: {task.project}" if hasattr(task, 'project') and task.project else ""
-        note_preview = f", Note: {task.note[:50]}..." if task.note and len(task.note) > 0 else ""
+        due_date_str = f", Due: {task.get('dueDate')}" if task.get('dueDate') else ""
+        project_str = f", Project: {task.get('project')}" if hasattr(task, 'project') and task.get('project') else ""
+        note_preview = f", Note: {task.get('note')[:50]}..." if task.get('note') and len(task.get('note')) > 0 else ""
         
-        task_details.append(f"{i+1}. {task.name}{due_date_str}{project_str}{note_preview}")
+        task_details.append(f"{i+1}. {task.get('name')}{due_date_str}{project_str}{note_preview}")
     
     # Build context information
     context_info = []
@@ -139,7 +156,7 @@ def create_prioritization_prompt(tasks: List[OmniFocusTask], contexts: Dict[str,
         for task1, task2 in duplicates:
             task1_idx = tasks.index(task1) + 1
             task2_idx = tasks.index(task2) + 1
-            duplicate_info.append(f"- Tasks {task1_idx} and {task2_idx} may be duplicates: '{task1.name}' and '{task2.name}'")
+            duplicate_info.append(f"- Tasks {task1_idx} and {task2_idx} may be duplicates: '{task1.get('name')}' and '{task2.get('name')}'")
 
     # Build the prompt
     prompt = f"""# Task Prioritization Request
@@ -216,17 +233,17 @@ def fallback_prioritize_tasks(tasks: List[OmniFocusTask]) -> List[str]:
     other_tasks = []
     
     for task in tasks:
-        if '[' in task.name and ']' in task.name:
+        if '[' in task.get('name') and ']' in task.get('name'):
             # Extract time if available
             try:
-                time_str = task.name.split('[')[1].split(']')[0]
+                time_str = task.get('name').split('[')[1].split(']')[0]
                 time_tasks.append((time_str, task))
             except:
-                if task.due_date:
+                if task.get('dueDate'):
                     due_date_tasks.append(task)
                 else:
                     other_tasks.append(task)
-        elif task.due_date:
+        elif task.get('dueDate'):
             due_date_tasks.append(task)
         else:
             other_tasks.append(task)
@@ -235,7 +252,7 @@ def fallback_prioritize_tasks(tasks: List[OmniFocusTask]) -> List[str]:
     time_tasks.sort(key=lambda x: x[0])
     
     # Sort due_date_tasks by due date
-    due_date_tasks.sort(key=lambda x: x.due_date or "9999-12-31")
+    due_date_tasks.sort(key=lambda x: x.get('dueDate') or "9999-12-31")
     
     # Create recommendations
     recommendations.append("# Task Prioritization Recommendations")
@@ -247,21 +264,21 @@ def fallback_prioritize_tasks(tasks: List[OmniFocusTask]) -> List[str]:
     if time_tasks:
         recommendations.append("## High Priority: Time-Specific Tasks")
         for i, (time, task) in enumerate(time_tasks):
-            recommendations.append(f"{i+1}. **{task.name}** - Has a specific time and should be done according to schedule.")
+            recommendations.append(f"{i+1}. **{task.get('name')}** - Has a specific time and should be done according to schedule.")
         recommendations.append("")
     
     # Then recommend tasks with due dates
     if due_date_tasks:
         recommendations.append("## Medium Priority: Tasks with Due Dates")
         for i, task in enumerate(due_date_tasks):
-            recommendations.append(f"{i+1}. **{task.name}** - Due: {task.due_date}")
+            recommendations.append(f"{i+1}. **{task.get('name')}** - Due: {task.get('dueDate')}")
         recommendations.append("")
     
     # Then recommend other tasks
     if other_tasks:
         recommendations.append("## Lower Priority: Tasks without Deadlines")
         for i, task in enumerate(other_tasks):
-            recommendations.append(f"{i+1}. **{task.name}** - No specific deadline, can be done when time permits.")
+            recommendations.append(f"{i+1}. **{task.get('name')}** - No specific deadline, can be done when time permits.")
     
     # Look for potential duplicates
     duplicates = find_duplicate_tasks(tasks)
@@ -269,7 +286,7 @@ def fallback_prioritize_tasks(tasks: List[OmniFocusTask]) -> List[str]:
         recommendations.append("")
         recommendations.append("## Potential Duplicate Tasks")
         for task1, task2 in duplicates:
-            recommendations.append(f"- **{task1.name}** and **{task2.name}** appear to be similar tasks that could be consolidated.")
+            recommendations.append(f"- **{task1.get('name')}** and **{task2.get('name')}** appear to be similar tasks that could be consolidated.")
     
     return recommendations
 

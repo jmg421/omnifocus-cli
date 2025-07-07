@@ -5,20 +5,29 @@ import subprocess
 import tempfile
 import os
 from typing import Optional, List, Dict, Any
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 def handle_list(args):
     """
-    Lists tasks in OmniFocus, optionally filtered by project and/or search text.
+    Lists tasks from the JSON export, optionally filtered by project and/or search text.
     """
-    project_name = args.project
-    search_text = args.search
-    tasks = apple_script_client.fetch_tasks(project_name, search_text)
-
-    if args.json:
-        print(json.dumps([task.to_dict() for task in tasks], indent=2))
+    file = getattr(args, 'file', None) or get_latest_json_export_path()
+    data = load_and_prepare_omnifocus_data(file)
+    if not data or not data.get("all_tasks"):
+        print(f"No tasks found in {file}")
+        return
+    project = getattr(args, 'project', None)
+    search = getattr(args, 'search', None)
+    tasks = [t for t in data["all_tasks"] if (not project or t.get("projectId") == project)]
+    if search:
+        tasks = [t for t in tasks if search.lower() in t.get("name", "").lower() or search.lower() in t.get("note", "").lower()]
+    if getattr(args, 'json', False):
+        print(json.dumps(tasks, indent=2))
     else:
-        output = format_task_list(tasks)
-        print(output)
+        for t in tasks:
+            print(f"- {t.get('name')} (ID: {t.get('id')})")
 
 def generate_list_live_tasks_applescript(project_name: str) -> str:
     """Generates AppleScript to list tasks from a specific project with their details."""
