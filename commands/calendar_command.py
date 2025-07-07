@@ -8,6 +8,10 @@ import icalendar
 import subprocess
 import tempfile
 import os
+import json
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 # Attempt to import shared utilities, if they exist in a known shared location
 # If not, local_ versions will be used.
@@ -112,14 +116,14 @@ def parse_and_format_datetime_for_applescript(date_str_input: Optional[str]) -> 
     if not dt_obj: # Fallback or if shared parser not imported/failed
         try:
             if len(date_str_input) == 10: # YYYY-MM-DD
-                dt_obj = datetime.datetime.strptime(date_str_input, "%Y-%m-%d")
+                dt_obj = datetime.strptime(date_str_input, "%Y-%m-%d")
             elif len(date_str_input) >= 16: # YYYY-MM-DD HH:MM
-                dt_obj = datetime.datetime.strptime(date_str_input[:16], "%Y-%m-%d %H:%M")
+                dt_obj = datetime.strptime(date_str_input[:16], "%Y-%m-%d %H:%M")
         except ValueError:
             pass # dt_obj remains None
 
     if dt_obj:
-        return dt_obj.strftime("%B %d, %Y %H:%M:%S") # e.g., "June 01, 2025 00:00:00"
+        return dt_obj.strftime("%A, %B %d, %Y at %I:%M:%S %p") # e.g., "Tuesday, July 01, 2025 at 10:00:00 AM"
     else:
         print(f"Warning: Date string '{date_str_input}' could not be parsed. Passing as is to AppleScript.")
         return date_str_input
@@ -137,8 +141,12 @@ def generate_add_calendar_event_applescript(
     s_notes = escape_fn(notes)
     s_calendar_name = escape_fn(calendar_name)
 
-    formatted_start_date = parse_and_format_datetime_for_applescript(start_date_str) or start_date_str
-    formatted_end_date = parse_and_format_datetime_for_applescript(end_date_str) or end_date_str
+    formatted_start_date = parse_and_format_datetime_for_applescript(start_date_str)
+    formatted_end_date = parse_and_format_datetime_for_applescript(end_date_str)
+
+    # If parsing fails for either date, abort with an informative error.
+    if not formatted_start_date or not formatted_end_date:
+        return f"echo 'Error: Could not parse date strings. Please use a valid format like YYYY-MM-DD or YYYY-MM-DD HH:MM.' >&2"
 
     script_parts = [
         'tell application "Calendar"',
@@ -166,48 +174,28 @@ def generate_add_calendar_event_applescript(
     return "\n".join(script_parts)
 
 def handle_add_calendar_event(args):
-    applescript_command = generate_add_calendar_event_applescript(
-        args.title,
-        args.start_date,
-        args.end_date,
-        args.notes,
-        args.calendar_name
+    """
+    Generates and executes an AppleScript to add an event to the Calendar app.
+    """
+    # Generate the AppleScript using the existing helper function
+    applescript_code = generate_add_calendar_event_applescript(
+        title=args.title,
+        start_date_str=args.start_date,
+        end_date_str=args.end_date,
+        notes=getattr(args, 'notes', None),
+        calendar_name=getattr(args, 'calendar_name', None)
     )
-    print("\nGenerated AppleScript for add-calendar-event (for review):")
-    print("------------------------------------")
-    print(applescript_command)
-    print("------------------------------------\n")
 
-    # Standard AppleScript execution logic (using temp file for osascript)
-    # Avoiding specific execute_omnifocus_applescript name here
-    _execute_applescript_fn = None
+    # Execute the generated AppleScript
     try:
-        from ..omnifocus_api.apple_script_client import execute_applescript as generic_execute_applescript
-        _execute_applescript_fn = generic_execute_applescript
-        print("Info: Using 'execute_applescript' from apple_script_client.")
-    except ImportError:
-        print("Info: 'execute_applescript' not found. Using direct 'osascript' call.")
-
-    try:
-        if _execute_applescript_fn:
-            result = _execute_applescript_fn(applescript_command)
-        else:
-            tmp_file_path = None
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
-                    tmp_script_file.write(applescript_command)
-                    tmp_file_path = tmp_script_file.name
-                process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
-                if process.returncode == 0:
-                    result = process.stdout.strip()
-                else:
-                    result = f"Error: osascript failed. STDERR: {process.stderr.strip()}"
-            finally:
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path)
-        
-        print(f"Apple Calendar AppleScript execution result:")
-        print(result)
-
-    except Exception as e:
-        print(f"An unexpected error occurred during AppleScript execution: {e}") 
+        result = subprocess.run(
+            ['osascript', '-e', applescript_code],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print("Calendar event result:")
+        print(result.stdout.strip())
+    except subprocess.CalledProcessError as e:
+        print("Error executing AppleScript to add calendar event:")
+        print(e.stderr.strip()) 

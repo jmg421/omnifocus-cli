@@ -2,48 +2,54 @@ import os
 import requests
 import anthropic
 from .utils.config import get_config
+from .utils.consent import check_ai_consent
 
 def anthropic_completion(prompt: str) -> str:
     """
     Calls Anthropic's Claude API with the given prompt.
     Returns the model's response text.
     """
-    # Try to get API key
-    cfg = get_config()
-    api_key = cfg.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-    
-    # If we have an API key, attempt to use the API
-    if api_key:
-        try:
-            url = "https://api.anthropic.com/v1/messages"
-
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json"
-            }
-
-            json_data = {
-                "model": "claude-3-haiku-20240307",
-                "max_tokens": 500,
-                "temperature": 0.7,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ]
-            }
-
-            print("Calling Anthropic Claude API...")
-            resp = requests.post(url, headers=headers, json=json_data, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
-            print("Successfully received response from Anthropic")
-            return data.get("content", [{}])[0].get("text", "").strip()
-        except Exception as e:
-            print(f"Error from Anthropic API: {str(e)}")
-            print("Falling back to mock responses")
-            # Fall through to mock responses
+    # Check for user consent before proceeding
+    if not check_ai_consent():
+        # Fall through to mock responses if consent is not given
+        print("Falling back to mock responses.")
     else:
-        print("Anthropic API key not set, using mock responses")
+        # Try to get API key
+        cfg = get_config()
+        api_key = cfg.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        
+        # If we have an API key, attempt to use the API
+        if api_key:
+            try:
+                url = "https://api.anthropic.com/v1/messages"
+
+                headers = {
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json"
+                }
+
+                json_data = {
+                    "model": "claude-3-haiku-20240307",
+                    "max_tokens": 500,
+                    "temperature": 0.7,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ]
+                }
+
+                print("Calling Anthropic Claude API...")
+                resp = requests.post(url, headers=headers, json=json_data, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                print("Successfully received response from Anthropic")
+                return data.get("content", [{}])[0].get("text", "").strip()
+            except Exception as e:
+                print(f"Error from Anthropic API: {str(e)}")
+                print("Falling back to mock responses")
+                # Fall through to mock responses
+        else:
+            print("Anthropic API key not set, using mock responses")
     
     # Mock responses based on prompt type
     if "Task Deduplication Request" in prompt:

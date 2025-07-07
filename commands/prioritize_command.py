@@ -1,77 +1,45 @@
-from omnifocus_api import apple_script_client
-from omnifocus_api.data_models import OmniFocusTask
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+
+import typer
 from ai_integration import ai_utils
 from ai_integration.utils.format_utils import format_priority_recommendations
 from ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
-import os
-import re
 from datetime import datetime
 from typing import List, Optional
 
-def get_tasks_for_prioritization(project_name: Optional[str], limit: Optional[int], finance_focus: bool) -> List[OmniFocusTask]:
-    """Fetches tasks from OmniFocus based on project, limit, or finance focus."""
-    tasks: List[OmniFocusTask] = []
-    # Get tasks from OmniFocus
-    if finance_focus:
-        print("Getting finance-related tasks from OmniFocus...")
-        # First try to get tasks from a Finance project if it exists
-        tasks = apple_script_client.fetch_tasks(project_name="Finance")
+app = typer.Typer()
 
-        # If no Finance project, look for tasks with finance-related keywords
-        if not tasks:
-            print("No 'Finance' project found. Searching for finance-related tasks...")
-            all_tasks = apple_script_client.fetch_tasks()
-            finance_keywords = ["finance", "budget", "money", "expense", "investment",
-                              "tax", "banking", "financial", "account"]
-
-            tasks = []
-            for task in all_tasks:
-                # Check if task contains finance keywords
-                task_text = f"{task.name} {task.note}".lower()
-                if any(keyword in task_text for keyword in finance_keywords):
-                    tasks.append(task)
-    else:
-        print(f"Getting tasks from OmniFocus{' for project: ' + project_name if project_name else ''}...")
-        tasks = apple_script_client.fetch_tasks(project_name=project_name)
-
-    # Limit the number of tasks if needed
+@app.command()
+def prioritize(
+    file: Optional[str] = typer.Option(None, "--file", help="Path to the OmniFocus JSON export file."),
+    project: Optional[str] = typer.Option(None, "--project", help="Project to focus on."),
+    limit: int = typer.Option(10, "--limit", help="Number of tasks to include in AI prioritization."),
+    finance: bool = typer.Option(False, "--finance", help="Focus on organizing and simplifying finance-related tasks."),
+    deduplicate: bool = typer.Option(False, "--deduplicate", help="Find and suggest consolidation of duplicate tasks."),
+):
+    """Prioritize tasks using AI, reading only from the JSON export."""
+    if not file:
+        file = get_latest_json_export_path()
+    data = load_and_prepare_omnifocus_data(file)
+    if not data or not data.get("all_tasks"):
+        print(f"No tasks found in {file}")
+        return
+    # Filter tasks by project if specified
+    tasks = [t for t in data["all_tasks"] if (not project or t.get("projectId") == project)]
+    if finance:
+        finance_keywords = ["finance", "budget", "money", "expense", "investment", "tax", "banking", "financial", "account"]
+        tasks = [t for t in tasks if any(k in (t.get("name", "") + " " + t.get("note", "")).lower() for k in finance_keywords)]
     if limit and len(tasks) > limit:
         tasks = tasks[:limit]
-
-    return tasks
-
-def handle_prioritize(args):
-    """
-    Calls AI to prioritize tasks. Gathers tasks from OmniFocus,
-    sends them to OpenAI or Anthropic, and prints the AI's recommendations.
-    """
-    project_name = args.project
-    limit = args.limit
-    focus_on_finance = args.finance
-    deduplicate = args.deduplicate
-    
-    # Fetch tasks using the new helper function
-    tasks = get_tasks_for_prioritization(project_name, limit, focus_on_finance)
-    
     if not tasks:
         print("No tasks found to prioritize.")
         return
-    
-    # Special handling for deduplication mode
-    if deduplicate:
-        handle_deduplication(tasks)
-        return
-    
-    # Special handling for finance focus
-    if focus_on_finance:
-        handle_finance_project(tasks)
-        return
-    
     # Send to AI for prioritization
     print(f"Analyzing {len(tasks)} tasks with AI...")
     prioritized_tasks = ai_utils.prioritize_tasks(tasks)
-    
-    # Display results
     print(format_priority_recommendations(prioritized_tasks))
 
 def handle_deduplication(tasks):
