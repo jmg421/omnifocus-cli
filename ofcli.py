@@ -319,6 +319,7 @@ from commands.search_command import handle_search
 from commands.merge_command import handle_merge_projects
 from commands.delete_command import handle_delete_project, handle_delete_task
 from commands.next_command import handle_next
+from commands.archive_command import handle_archive_completed
 
 @app.command("add")
 def add(
@@ -1595,6 +1596,22 @@ def next_command():
     Shows a focused list of next actions to reduce overwhelm.
     """
     handle_next(None) # No arguments are passed for now
+
+@app.command("archive-completed")
+def archive_completed_command(
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to the OmniFocus JSON export file. Uses latest export if not specified."),
+    age_days: int = typer.Option(0, "--age-days", "-a", help="Minimum age in days for archiving completed items (0 = archive all completed items immediately)."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be archived without making changes."),
+    force: bool = typer.Option(False, "--force", help="Archive without confirmation prompt.")
+):
+    """Archive completed/old OmniFocus content to reference_archive/ directory."""
+    args = type('Args', (), {
+        'file': file,
+        'age_days': age_days,
+        'dry_run': dry_run,
+        'force': force
+    })
+    handle_archive_completed(args)
 
 if __name__ == "__main__":
     app() 
