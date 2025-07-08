@@ -1,5 +1,6 @@
 tell application "OmniFocus"
-  tell default document
-    return "Connected to OmniFocus with " & (count of every flattened task) & " tasks."
-  end tell
+    tell default document
+        set taskCount to count of flattened tasks
+        return taskCount
+    end tell
 end tell
