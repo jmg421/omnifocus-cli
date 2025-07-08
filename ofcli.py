@@ -1602,14 +1602,16 @@ def archive_completed_command(
     file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to the OmniFocus JSON export file. Uses latest export if not specified."),
     age_days: int = typer.Option(0, "--age-days", "-a", help="Minimum age in days for archiving completed items (0 = archive all completed items immediately)."),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be archived without making changes."),
-    force: bool = typer.Option(False, "--force", help="Archive without confirmation prompt.")
+    force: bool = typer.Option(False, "--force", help="Archive without confirmation prompt."),
+    delete_from_omnifocus: bool = typer.Option(False, "--delete-from-omnifocus", "-d", help="Also delete archived items from the live OmniFocus database (RECOMMENDED for true archival).")
 ):
     """Archive completed/old OmniFocus content to reference_archive/ directory."""
     args = type('Args', (), {
         'file': file,
         'age_days': age_days,
         'dry_run': dry_run,
-        'force': force
+        'force': force,
+        'delete_from_omnifocus': delete_from_omnifocus
     })
     handle_archive_completed(args)
 
