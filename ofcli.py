@@ -149,7 +149,18 @@ def load_and_prepare_omnifocus_data(json_file_path: str) -> Dict[str, Any]:
     if isinstance(projects, dict):
         for project in projects.values():
             process_project(project, folder_id=project.get("folderID"))
-    # No inboxItems or structure in this export
+    # Process top-level tasks (present in new export schema)
+    top_level_tasks = raw_data.get("tasks", [])
+    if isinstance(top_level_tasks, list):
+        for task_data in top_level_tasks:
+            proj_id = task_data.get("projectId") if isinstance(task_data, dict) else None
+            process_task(task_data, project_id=proj_id)
+
+    # Process inbox tasks if provided separately
+    inbox_tasks = raw_data.get("inboxTasks", [])
+    if isinstance(inbox_tasks, list):
+        for task_data in inbox_tasks:
+            process_task(task_data)  # project_id=None indicates inbox
 
     return {
         "all_tasks": list(tasks_dict.values()),
