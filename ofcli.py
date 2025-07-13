@@ -25,15 +25,23 @@ import csv # Add csv import
 import glob
 from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
+import subprocess
+from rich.console import Console
+
 # === Default Paths ===
 def get_latest_json_export_path():
-    # Find all matching export files
-    files = glob.glob('data/omnifocus_export_*.json')
-    if not files:
-        return None
-    # Sort by modification time, descending
-    files.sort(key=os.path.getmtime, reverse=True)
-    return files[0]
+    """Return path to a fresh export, creating one if necessary."""
+    try:
+        from utils.ensure_export import ensure_fresh_export
+        return ensure_fresh_export(int(os.getenv("OF_EXPORT_MAX_AGE", "1800")))
+    except Exception as e:
+        # Fallback to previous heuristic if helper fails
+        files = glob.glob('data/omnifocus_export_*.json')
+        if not files:
+            print(f"Warning: ensure_fresh_export failed ({e}) and no legacy export found.", file=sys.stderr)
+            return None
+        files.sort(key=os.path.getmtime, reverse=True)
+        return files[0]
 
 # Load environment variables
 load_env_vars()
@@ -511,13 +519,14 @@ def list_projects(
     file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
 ):
     """List all project names in OmniFocus (fast)."""
-    projects = fetch_projects_from_json(file)
-    if not projects:
+    data = load_and_prepare_omnifocus_data(file)
+    projects_map = data.get('projects_map', {})
+    if not projects_map:
         print("No projects found or error fetching projects.")
         return
     print("OmniFocus Projects:")
-    for p in projects:
-        print(f"- {p}")
+    for project_id, project in projects_map.items():
+        print(f"- {project.get('name', 'Unnamed Project')} (ID: {project_id})")
 
 # New merge-projects command
 @app.command("merge-projects")
@@ -1439,13 +1448,28 @@ def categorize_tasks_command(
         print(f"Error: Could not decode JSON from {input_file}", file=sys.stderr)
         raise typer.Exit(code=1)
 
-    if not isinstance(consolidated_tasks, list):
-        print(f"Error: Expected a list of tasks in {input_file}, got {type(consolidated_tasks)}", file=sys.stderr)
+    # Accept both a list of tasks, a dict with 'tasks_map', or a dict with 'projects'
+    if isinstance(consolidated_tasks, dict):
+        if 'tasks_map' in consolidated_tasks:
+            consolidated_tasks = list(consolidated_tasks['tasks_map'].values())
+        elif 'projects' in consolidated_tasks:
+            # Flatten all tasks from all projects
+            projects = consolidated_tasks['projects']
+            all_tasks = []
+            for project in projects.values():
+                all_tasks.extend(project.get('tasks', []))
+            consolidated_tasks = all_tasks
+        else:
+            print(f"Error: Dict input does not contain 'tasks_map' or 'projects'. Keys: {list(consolidated_tasks.keys())}", file=sys.stderr)
+            raise typer.Exit(code=1)
+    elif not isinstance(consolidated_tasks, list):
+        print(f"Error: Expected a list of tasks or a dict with 'tasks_map' or 'projects' in {input_file}, got {type(consolidated_tasks)}", file=sys.stderr)
         raise typer.Exit(code=1)
 
     categorized_tasks_list = []
     actionable_count = 0
     reference_count = 0
+    flagged_actionable_count = 0
 
     for task in consolidated_tasks:
         if not isinstance(task, dict):
@@ -1455,39 +1479,34 @@ def categorize_tasks_command(
         
         # Make a copy to avoid modifying the original task object in the list if it's reused
         task_copy = task.copy()
-        csv_status = task_copy.get("csv_status")
-
+        # Use new export fields
+        status = (task_copy.get("status") or "").capitalize()
+        flagged = bool(task_copy.get("flagged", False))
         # Default category
         management_category = "Actionable"
-
-        if csv_status in ["Completed", "Dropped"]:
+        if status in ["Completed", "Dropped"]:
             management_category = "Reference"
-        # NEW: Check for old inbox items if still considered Actionable
-        elif management_category == "Actionable" and \
-             task_copy.get("csv_project_name") is None and \
-             task_copy.get("csv_due_date") is None and \
-             task_copy.get("csv_defer_date") is None:
-            management_category = "Reference (Inbox Archive Candidate)"
-        
+        elif status not in ["Active", "Blocked", "Unknown"]:
+            management_category = "Reference (Other Status)"
         task_copy["management_category"] = management_category
-
         if management_category == "Actionable":
             actionable_count += 1
+            if flagged:
+                flagged_actionable_count += 1
         else:
             reference_count += 1
-        
         categorized_tasks_list.append(task_copy)
 
     print("\n--- Categorization Summary ---")
     print(f"Total tasks processed: {len(categorized_tasks_list)}")
     print(f"Tasks categorized as 'Actionable': {actionable_count}")
+    print(f"  of which flagged: {flagged_actionable_count}")
     print(f"Tasks categorized as 'Reference': {reference_count}")
 
     try:
         output_dir = os.path.dirname(output_file)
         if output_dir: # Check if output_dir is not empty (i.e., not the current directory)
             os.makedirs(output_dir, exist_ok=True)
-            
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(categorized_tasks_list, f, indent=2)
         print(f"Categorized tasks saved to {output_file}")
@@ -1498,26 +1517,42 @@ def categorize_tasks_command(
         print(f"An unexpected error occurred during file writing or directory creation: {e}", file=sys.stderr)
         raise typer.Exit(code=1)
 
-    # Temporary: Print a sample of "Reference (Inbox Archive Candidate)" tasks for review
-    print("\n--- Sample of 'Reference (Inbox Archive Candidate)' tasks for review ---")
+    # Print a sample of 'Actionable' and 'Reference' tasks for review
+    print("\n--- Sample of 'Actionable' tasks for review ---")
     sample_count = 0
-    max_sample_to_print = 30 # You can adjust this number
+    max_sample_to_print = 10
     for task in categorized_tasks_list:
-        if task.get("management_category") == "Reference (Inbox Archive Candidate)":
+        if task.get("management_category") == "Actionable":
             if sample_count < max_sample_to_print:
-                print(f"  Name: {task.get('csv_name')}")
-                print(f"    CSV Project: {task.get('csv_project_name')}") # Should be None
-                print(f"    CSV Due: {task.get('csv_due_date')}")       # Should be None
-                print(f"    CSV Defer: {task.get('csv_defer_date')}")   # Should be None
-                if task.get('csv_notes') and task.get('csv_notes').strip():
-                    print(f"    CSV Notes: {task.get('csv_notes')[:100]}...") # Print first 100 chars of notes
+                print(f"  Name: {task.get('name')}")
+                print(f"    Status: {task.get('status')}")
+                print(f"    Due: {task.get('dueDate')}")
+                print(f"    Defer: {task.get('deferDate')}")
+                print(f"    Flagged: {task.get('flagged')}")
                 print(f"    Category: {task.get('management_category')}")
                 print("    ----")
                 sample_count += 1
             else:
-                break # Stop printing after reaching max_sample_to_print
+                break
     if sample_count == 0:
-        print("No tasks found in the 'Reference (Inbox Archive Candidate)' category to sample.")
+        print("No tasks found in the 'Actionable' category to sample.")
+    print("\n--- Sample of 'Reference' tasks for review ---")
+    sample_count = 0
+    for task in categorized_tasks_list:
+        if task.get("management_category").startswith("Reference"):
+            if sample_count < max_sample_to_print:
+                print(f"  Name: {task.get('name')}")
+                print(f"    Status: {task.get('status')}")
+                print(f"    Due: {task.get('dueDate')}")
+                print(f"    Defer: {task.get('deferDate')}")
+                print(f"    Flagged: {task.get('flagged')}")
+                print(f"    Category: {task.get('management_category')}")
+                print("    ----")
+                sample_count += 1
+            else:
+                break
+    if sample_count == 0:
+        print("No tasks found in the 'Reference' category to sample.")
 
 @app.command("summary")
 def summary_command(
@@ -1614,6 +1649,25 @@ def archive_completed_command(
         'delete_from_omnifocus': delete_from_omnifocus
     })
     handle_archive_completed(args)
+
+@app.command("diagnostics")
+def diagnostics():
+    """Check system health for OmniFocus automation."""
+    console = Console()
+    # Check if OmniFocus is running
+    try:
+        result = subprocess.run(["pgrep", "-x", "OmniFocus"], capture_output=True)
+        is_running = result.returncode == 0
+    except Exception as e:
+        is_running = False
+        error_msg = str(e)
+    if is_running:
+        console.print("✅ OmniFocus is running", style="green")
+    else:
+        msg = f"❌ OmniFocus is NOT running"
+        if 'error_msg' in locals():
+            msg += f" (Error: {error_msg})"
+        console.print(msg, style="red")
 
 if __name__ == "__main__":
     app() 
