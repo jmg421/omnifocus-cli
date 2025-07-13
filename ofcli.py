@@ -1698,5 +1698,64 @@ def ingest_command(
     if not quiet:
         print("Ingestion complete.")
 
+# =======================
+# Next Actions Command
+# =======================
+
+@app.command("next-actions")
+def next_actions_command(
+    limit: int = typer.Option(50, "--limit", "-l", help="Maximum number of tasks to show."),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Filter to a specific project name or ID."),
+    flagged_only: bool = typer.Option(False, "--flagged-only", "-f", help="Show only flagged next actions."),
+):
+    """Show a focused list of Available / Next tasks from the SQLite database."""
+
+    # Ensure DB is up to date
+    script_path = Path(__file__).resolve().parent.parent / "scripts" / "ingest_export.py"
+    subprocess.run(["python3", str(script_path), "--age", "900"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    db_path = Path("data/omnifocus.sqlite")
+    if not db_path.exists():
+        print("Database not found. Run 'ofcli ingest' first.", file=sys.stderr)
+        raise typer.Exit(code=1)
+
+    import sqlite3, datetime as _dt
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    status_set = ("Available", "Next")
+    sql = "SELECT t.id, t.name, t.dueDate, t.flagged, p.name AS projectName FROM tasks t " \
+          "LEFT JOIN projects p ON p.id = t.projectId " \
+          "WHERE t.status IN (?, ?)"
+    params = list(status_set)
+
+    if flagged_only:
+        sql += " AND t.flagged = 1"
+
+    if project:
+        # Accept either project ID or name (case-insensitive)
+        sql += " AND (p.id = ? OR lower(p.name) = lower(?))"
+        params.extend([project, project])
+
+    sql += " ORDER BY t.flagged DESC, t.dueDate IS NULL, t.dueDate ASC LIMIT ?"
+    params.append(limit)
+
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+
+    if not rows:
+        print("No next actions found with given filters.")
+        return
+
+    print(f"Next Actions (showing {len(rows)}/{limit}):")
+    for r in rows:
+        due_disp = r["dueDate"][:10] if r["dueDate"] else ""
+        flag_icon = "★ " if r["flagged"] else "  "
+        proj = r["projectName"] or "(No Project)"
+        print(f"{flag_icon}{r['name']}  [Project: {proj}]{'  Due:' + due_disp if due_disp else ''}")
+    conn.close()
+
 if __name__ == "__main__":
     app() 
