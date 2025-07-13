@@ -38,12 +38,12 @@ def handle_search(args):
     table.add_column("Status", style="magenta")
     
     for task in tasks:
-        status = "✓" if task.completed else " "
-        due = task.due_date if task.due_date else "-"
+        status = "✓" if task.get("completed", False) or task.get("status", "").lower() == "completed" else " "
+        due = task.get("dueDate") or task.get("due_date") or "-"
         table.add_row(
-            task.id,
-            task.name,
-            due,
+            str(task.get("id", "")),
+            str(task.get("name", "")),
+            str(due),
             status
         )
     
