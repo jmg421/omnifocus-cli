@@ -292,6 +292,8 @@
             let jsonOutputString = "";
             let outputSummaryMessage = "";
 
+            console.log(`[DEBUG_V1.2.2] Criteria comparison: criteria.type="${criteria.type}", typeof="${typeof criteria.type}"`);
+            
             if (criteria.type === 'next_actions') {
                 console.log("[DEBUG_V1.2.2] Processing 'next_actions' request.");
                 
@@ -437,6 +439,144 @@
                 outputSummaryMessage = `SUCCESS: Filtered 'next_actions' data copied to clipboard. Tasks: ${filteredOutput.tasks.length + filteredOutput.inboxTasks.length}. JSON length: ${jsonOutputString.length}`;
                 console.log(`[DEBUG_V1.2.2] Next Actions processing complete. Tasks: ${filteredOutput.tasks.length + filteredOutput.inboxTasks.length}, Projects: ${Object.keys(filteredOutput.projects).length}, Folders: ${Object.keys(filteredOutput.folders).length}, Tags: ${Object.keys(filteredOutput.tags).length}.`);
 
+            } else if (criteria.type === 'flagged_analysis') {
+                console.log("[DEBUG_V1.2.2] Processing 'flagged_analysis' request.");
+                
+                // FLAGGED ITEMS ANALYSIS
+                const now = new Date();
+                
+                // Get all flagged tasks (avoid duplicates using Set of IDs)
+                const allFlaggedTasks = [];
+                const seenTaskIds = new Set();
+                
+                // Add inbox flagged tasks
+                if (typeof inbox !== 'undefined' && inbox !== null && typeof inbox.forEach === 'function') {
+                    inbox.forEach(task => {
+                        if (task.flagged && !seenTaskIds.has(task.id.primaryKey)) {
+                            allFlaggedTasks.push(task);
+                            seenTaskIds.add(task.id.primaryKey);
+                        }
+                    });
+                }
+                
+                // Add project flagged tasks (skip if already seen)
+                if (typeof flattenedTasks !== 'undefined' && flattenedTasks !== null) {
+                    flattenedTasks.forEach(task => {
+                        if (task.flagged && !seenTaskIds.has(task.id.primaryKey)) {
+                            allFlaggedTasks.push(task);
+                            seenTaskIds.add(task.id.primaryKey);
+                        }
+                    });
+                }
+
+                // Get flagged projects
+                const flaggedProjects = [];
+                if (typeof flattenedProjects !== 'undefined' && flattenedProjects !== null) {
+                    flattenedProjects.forEach(project => {
+                        if (project.flagged) flaggedProjects.push(project);
+                    });
+                }
+
+                // Enhanced task conversion with analysis fields
+                const taskToAnalysisJSON = (task) => {
+                    const proj = task.containingProject;
+                    const parent = task.parentTask;
+                    return {
+                        id: task.id.primaryKey,
+                        name: task.name,
+                        note: task.note || "",
+                        status: getTaskStatusString(task.taskStatus),
+                        taskStatus: task.taskStatus.toString(),
+                        flagged: task.flagged,
+                        completed: task.effectiveCompletionDate !== null,
+                        dueDate: formatDate(task.effectiveDueDate),
+                        deferDate: formatDate(task.effectiveDeferDate),
+                        completionDate: formatDate(task.effectiveCompletionDate),
+                        estimatedMinutes: task.estimatedMinutes,
+                        projectId: proj ? proj.id.primaryKey : null,
+                        projectName: proj ? proj.name : 'Inbox',
+                        parentId: parent ? parent.id.primaryKey : null,
+                        childIds: task.children ? task.children.map(t => t.id.primaryKey) : [],
+                        tagIds: task.tags.map(t => t.id.primaryKey),
+                        tagNames: task.tags.map(t => t.name),
+                        // Analysis fields
+                        isOverdue: task.effectiveDueDate && task.effectiveDueDate < now && !task.effectiveCompletionDate,
+                        isDueToday: task.effectiveDueDate && task.effectiveDueDate.toDateString() === now.toDateString(),
+                        hasDueDate: !!task.effectiveDueDate,
+                        hasChildren: task.children && task.children.length > 0,
+                        isActionable: task.taskStatus === Task.Status.Available || task.taskStatus === Task.Status.Next,
+                    };
+                };
+
+                const projectAnalysisJSON = (project) => ({
+                    id: project.id.primaryKey,
+                    name: project.name,
+                    status: getProjectStatusString(project.status),
+                    flagged: project.flagged,
+                    note: project.note || "",
+                    dueDate: formatDate(project.dueDate),
+                    deferDate: formatDate(project.deferDate),
+                    completionDate: formatDate(project.effectiveCompletedDate),
+                    estimatedMinutes: project.estimatedMinutes,
+                    taskCount: project.flattenedTasks ? project.flattenedTasks.length : 0,
+                    flaggedTaskCount: project.flattenedTasks ? project.flattenedTasks.filter(t => t.flagged).length : 0,
+                });
+
+                // Convert to JSON with analysis
+                const flaggedTasks = allFlaggedTasks.map(taskToAnalysisJSON);
+                const flaggedProjectsData = flaggedProjects.map(projectAnalysisJSON);
+
+                // Categorize flagged items for analysis
+                const categories = {
+                    actionableNextActions: flaggedTasks.filter(t => t.isActionable && !t.hasChildren),
+                    overdueItems: flaggedTasks.filter(t => t.isOverdue),
+                    dueTodayItems: flaggedTasks.filter(t => t.isDueToday),
+                    referenceCategories: flaggedTasks.filter(t => 
+                        t.name.toLowerCase().includes('process') ||
+                        t.name.toLowerCase().includes('measures') ||
+                        t.name.toLowerCase().includes('coordination') ||
+                        t.name.toLowerCase().includes('advocacy') ||
+                        t.hasChildren
+                    ),
+                    westonHealingItems: flaggedTasks.filter(t => 
+                        t.projectName && t.projectName.toLowerCase().includes('weston healing')
+                    ),
+                    projectManagement: flaggedTasks.filter(t =>
+                        t.name.toLowerCase().includes('review') ||
+                        t.name.toLowerCase().includes('plan') ||
+                        t.name.toLowerCase().includes('organize')
+                    ),
+                    inboxItems: flaggedTasks.filter(t => t.projectName === 'Inbox'),
+                };
+
+                const flaggedAnalysisOutput = {
+                    version: "flagged-analysis-1.0",
+                    timestamp: now.toISOString(),
+                    criteriaUsed: criteria,
+                    summary: {
+                        totalFlaggedTasks: flaggedTasks.length,
+                        totalFlaggedProjects: flaggedProjectsData.length,
+                        actionableNextActions: categories.actionableNextActions.length,
+                        overdueItems: categories.overdueItems.length,
+                        dueTodayItems: categories.dueTodayItems.length,
+                        referenceCategories: categories.referenceCategories.length,
+                        westonHealingItems: categories.westonHealingItems.length,
+                        inboxItems: categories.inboxItems.length,
+                    },
+                    flaggedTasks: flaggedTasks,
+                    flaggedProjects: flaggedProjectsData,
+                    categories: categories,
+                    recommendations: {
+                        shouldUnflagReferenceCategories: categories.referenceCategories.length > 0,
+                        shouldProcessInboxItems: categories.inboxItems.length > 0,
+                        shouldAddresOverdueItems: categories.overdueItems.length > 0,
+                        shouldFocusOnActionableItems: categories.actionableNextActions.length > 0,
+                    }
+                };
+
+                jsonOutputString = JSON.stringify(flaggedAnalysisOutput, null, 2);
+                outputSummaryMessage = `SUCCESS: Flagged analysis data copied to clipboard. Flagged Tasks: ${flaggedTasks.length}, Flagged Projects: ${flaggedProjectsData.length}. JSON length: ${jsonOutputString.length}`;
+                console.log(`[DEBUG_V1.2.2] Flagged analysis processing complete. Tasks: ${flaggedTasks.length}, Projects: ${flaggedProjectsData.length}, Actionable: ${categories.actionableNextActions.length}, Overdue: ${categories.overdueItems.length}.`);
 
             } else { // Default to 'full_dump'
                 console.log("[DEBUG_V1.2.2] Processing 'full_dump' request (or fallback).");

@@ -1,0 +1,236 @@
+(() => {
+    const action = new PlugIn.Action(function(selection, sender) {
+        console.log("[TASK_MOD_V1.0] Task Modifications plugin started.");
+        
+        try {
+            // Get criteria from the action parameter (passed via URL)
+            let criteria = {};
+            if (sender && sender.parameters && sender.parameters.length > 0) {
+                try {
+                    criteria = JSON.parse(sender.parameters[0]);
+                    console.log(`[TASK_MOD_V1.0] Received criteria: ${JSON.stringify(criteria)}`);
+                } catch (e) {
+                    console.error(`[TASK_MOD_V1.0] Failed to parse criteria: ${e.message}`);
+                    throw new Error(`Invalid criteria JSON: ${e.message}`);
+                }
+            } else {
+                console.error("[TASK_MOD_V1.0] No criteria provided.");
+                throw new Error("No modification criteria provided.");
+            }
+
+            let result = { success: false, message: "", details: {} };
+
+            // Handle different modification types
+            if (criteria.type === 'reschedule_task') {
+                console.log("[TASK_MOD_V1.0] Processing reschedule_task request.");
+                result = rescheduleTask(criteria);
+                
+            } else if (criteria.type === 'unflag_task') {
+                console.log("[TASK_MOD_V1.0] Processing unflag_task request.");
+                result = unflagTask(criteria);
+                
+            } else if (criteria.type === 'bulk_unflag') {
+                console.log("[TASK_MOD_V1.0] Processing bulk_unflag request.");
+                result = bulkUnflagTasks(criteria);
+                
+            } else {
+                throw new Error(`Unknown modification type: ${criteria.type}`);
+            }
+
+            // Copy result to clipboard as JSON
+            const resultJson = JSON.stringify(result, null, 2);
+            Pasteboard.general.string = resultJson;
+            
+            console.log(`[TASK_MOD_V1.0] ${result.success ? 'SUCCESS' : 'FAILURE'}: ${result.message}`);
+            
+            if (!result.success) {
+                const alert = new Alert("Task Modification Failed", result.message);
+                alert.show();
+            }
+
+        } catch (error) {
+            console.error(`[TASK_MOD_V1.0] CRITICAL ERROR: ${error.toString()}`);
+            const errorResult = {
+                success: false,
+                message: `Plugin error: ${error.message}`,
+                details: { error: error.toString() }
+            };
+            Pasteboard.general.string = JSON.stringify(errorResult, null, 2);
+            
+            const alert = new Alert("Plugin Error", `Task modification failed: ${error.message}`);
+            alert.show();
+        }
+    });
+
+    // Function to reschedule a task
+    function rescheduleTask(criteria) {
+        try {
+            if (!criteria.taskId) {
+                return { success: false, message: "Task ID is required for rescheduling." };
+            }
+            if (!criteria.newDueDate) {
+                return { success: false, message: "New due date is required for rescheduling." };
+            }
+
+            // Find the task by ID
+            const task = Task.byIdentifier(criteria.taskId);
+            if (!task) {
+                return { success: false, message: `Task not found with ID: ${criteria.taskId}` };
+            }
+
+            console.log(`[TASK_MOD_V1.0] Found task: "${task.name}"`);
+            
+            // Parse the new due date
+            let newDate;
+            try {
+                newDate = new Date(criteria.newDueDate);
+                if (isNaN(newDate.getTime())) {
+                    throw new Error("Invalid date format");
+                }
+            } catch (e) {
+                return { success: false, message: `Invalid date format: ${criteria.newDueDate}` };
+            }
+
+            // Store original due date for logging
+            const originalDueDate = task.dueDate ? task.dueDate.toISOString() : null;
+            
+            // Update the due date
+            task.dueDate = newDate;
+            
+            console.log(`[TASK_MOD_V1.0] Rescheduled "${task.name}" from ${originalDueDate} to ${newDate.toISOString()}`);
+            
+            return {
+                success: true,
+                message: `Successfully rescheduled task "${task.name}"`,
+                details: {
+                    taskId: criteria.taskId,
+                    taskName: task.name,
+                    originalDueDate: originalDueDate,
+                    newDueDate: newDate.toISOString()
+                }
+            };
+
+        } catch (error) {
+            console.error(`[TASK_MOD_V1.0] Reschedule error: ${error.toString()}`);
+            return {
+                success: false,
+                message: `Failed to reschedule task: ${error.message}`,
+                details: { error: error.toString() }
+            };
+        }
+    }
+
+    // Function to unflag a task
+    function unflagTask(criteria) {
+        try {
+            if (!criteria.taskId) {
+                return { success: false, message: "Task ID is required for unflagging." };
+            }
+
+            // Find the task by ID
+            const task = Task.byIdentifier(criteria.taskId);
+            if (!task) {
+                return { success: false, message: `Task not found with ID: ${criteria.taskId}` };
+            }
+
+            console.log(`[TASK_MOD_V1.0] Found task: "${task.name}"`);
+            
+            // Store original flagged state
+            const wasFlagged = task.flagged;
+            
+            // Unflag the task
+            task.flagged = false;
+            
+            console.log(`[TASK_MOD_V1.0] Unflagged task "${task.name}"`);
+            
+            return {
+                success: true,
+                message: `Successfully unflagged task "${task.name}"`,
+                details: {
+                    taskId: criteria.taskId,
+                    taskName: task.name,
+                    wasFlagged: wasFlagged,
+                    nowFlagged: false
+                }
+            };
+
+        } catch (error) {
+            console.error(`[TASK_MOD_V1.0] Unflag error: ${error.toString()}`);
+            return {
+                success: false,
+                message: `Failed to unflag task: ${error.message}`,
+                details: { error: error.toString() }
+            };
+        }
+    }
+
+    // Function to bulk unflag multiple tasks
+    function bulkUnflagTasks(criteria) {
+        try {
+            if (!criteria.taskIds || !Array.isArray(criteria.taskIds)) {
+                return { success: false, message: "Array of task IDs is required for bulk unflagging." };
+            }
+
+            const results = [];
+            let successCount = 0;
+            let failureCount = 0;
+
+            criteria.taskIds.forEach(taskId => {
+                try {
+                    const task = Task.byIdentifier(taskId);
+                    if (!task) {
+                        results.push({ taskId: taskId, success: false, message: "Task not found" });
+                        failureCount++;
+                        return;
+                    }
+
+                    const wasFlagged = task.flagged;
+                    task.flagged = false;
+                    
+                    results.push({
+                        taskId: taskId,
+                        taskName: task.name,
+                        success: true,
+                        wasFlagged: wasFlagged
+                    });
+                    successCount++;
+                    
+                } catch (error) {
+                    results.push({
+                        taskId: taskId,
+                        success: false,
+                        message: error.message
+                    });
+                    failureCount++;
+                }
+            });
+
+            console.log(`[TASK_MOD_V1.0] Bulk unflag complete: ${successCount} success, ${failureCount} failures`);
+            
+            return {
+                success: failureCount === 0,
+                message: `Bulk unflag complete: ${successCount} success, ${failureCount} failures`,
+                details: {
+                    totalRequested: criteria.taskIds.length,
+                    successCount: successCount,
+                    failureCount: failureCount,
+                    results: results
+                }
+            };
+
+        } catch (error) {
+            console.error(`[TASK_MOD_V1.0] Bulk unflag error: ${error.toString()}`);
+            return {
+                success: false,
+                message: `Failed to bulk unflag tasks: ${error.message}`,
+                details: { error: error.toString() }
+            };
+        }
+    }
+
+    action.validate = function(selection, sender) {
+        return true;
+    };
+
+    return action;
+})(); 
