@@ -1757,5 +1757,21 @@ def next_actions_command(
         print(f"{flag_icon}{r['name']}  [Project: {proj}]{'  Due:' + due_disp if due_disp else ''}")
     conn.close()
 
+# =====================
+# Dashboard Command
+# =====================
+
+@app.command("dashboard")
+def dashboard_command(
+    open_browser: bool = typer.Option(False, "--open", "-o", help="Open HTML dashboard in browser."),
+):
+    """Generate today's Markdown + HTML dashboard report."""
+    script_path = Path(__file__).resolve().parent.parent / "scripts" / "generate_dashboard.py"
+    cmd = ["python3", str(script_path)]
+    if open_browser:
+        cmd.append("--open")
+    subprocess.run(cmd, check=True)
+    print("Dashboard generated.")
+
 if __name__ == "__main__":
     app() 
