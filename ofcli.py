@@ -1557,10 +1557,9 @@ def categorize_tasks_command(
 @app.command("summary")
 def summary_command(
     json_file: str = typer.Option(
-        "data/omnifocus_export_202505180731am.json",
+        get_latest_json_export_path(),
         "--file",
-        help="Path to the OmniFocus JSON export file.",
-        exists=True, readable=True, file_okay=True, dir_okay=False
+        help="Path to the OmniFocus JSON export file. Defaults to latest export.",
     )
 ):
     """
