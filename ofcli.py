@@ -27,6 +27,7 @@ from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_d
 
 import subprocess
 from rich.console import Console
+from pathlib import Path
 
 # === Default Paths ===
 def get_latest_json_export_path():
@@ -1678,6 +1679,24 @@ def diagnostics():
         if 'error_msg' in locals():
             msg += f" (Error: {error_msg})"
         console.print(msg, style="red")
+
+@app.command("ingest")
+def ingest_command(
+    age: int = typer.Option(1800, "--age", "-a", help="Max age (seconds) before triggering a new export."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress subprocess output"),
+):
+    """Ensure fresh export, archive it, and update the SQLite DB."""
+    script_path = Path(__file__).resolve().parent.parent / "scripts" / "ingest_export.py"
+    cmd = ["python3", str(script_path), "--age", str(age)]
+    if quiet:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(result.stderr, file=sys.stderr)
+            raise typer.Exit(code=1)
+    else:
+        subprocess.run(cmd, check=True)
+    if not quiet:
+        print("Ingestion complete.")
 
 if __name__ == "__main__":
     app() 
