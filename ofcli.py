@@ -3,7 +3,7 @@ import sys
 import os
 import typer
 from typing import Optional, Any, Dict, List
-from datetime import datetime, date # Added for date parsing
+from datetime import datetime, date, timedelta # Added for date parsing and timedelta
 # Add thefuzz for fuzzy string matching
 from thefuzz import fuzz, process
 
@@ -338,6 +338,8 @@ from commands.cleanup_command import handle_cleanup
 from commands.search_command import handle_search
 from commands.merge_command import handle_merge_projects
 from commands.delete_command import handle_delete_project, handle_delete_task
+from commands.icalbuddy_integration import handle_icalbuddy_test, handle_icalbuddy_verify, handle_icalbuddy_conflicts
+from commands.applescript_calendar_integration import handle_applescript_calendar_test, handle_applescript_calendar_verify, handle_applescript_calendar_conflicts, handle_applescript_calendar_events
 from commands.next_command import handle_next
 from commands.archive_command import handle_archive_completed
 
@@ -347,15 +349,21 @@ def add(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project to place the task in."),
     note: Optional[str] = typer.Option(None, "--note", "-n", help="Optional note."),
     due: Optional[str] = typer.Option(None, "--due", "-d", help="Due date/time (natural language or YYYY-MM-DD)."),
+    duration: Optional[int] = typer.Option(None, "--duration", "-D", help="Estimated duration in minutes."),
 ):
-    """Add a new task or project to OmniFocus."""
+    """Quick add a new task to OmniFocus (alias for add-task)."""
     args = type('Args', (), {
         'title': title,
-        'project': project,
+        'folder_name': None,
+        'project_name': project,
         'note': note,
-        'due': due
+        'tags': None,
+        'due_date': due,
+        'defer_date': None,
+        'recurrence_rule': None,
+        'duration': duration
     })
-    handle_add(args)
+    handle_add_detailed_task(args)
 
 @app.command("add-task")
 def add_detailed_task_command(
@@ -366,9 +374,10 @@ def add_detailed_task_command(
     tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags to assign to the task."),
     due_date: Optional[str] = typer.Option(None, "--due", help="Due date (natural language or YYYY-MM-DD). Needed for some recurrence rules."),
     defer_date: Optional[str] = typer.Option(None, "--defer", help="Defer date (natural language or YYYY-MM-DD)."),
-    recurrence_rule: Optional[str] = typer.Option(None, "--recurrence", "-r", help='Recurrence rule string (e.g., "FREQ=MONTHLY;INTERVAL=1").')
+    recurrence_rule: Optional[str] = typer.Option(None, "--recurrence", "-r", help='Recurrence rule string (e.g., "FREQ=MONTHLY;INTERVAL=1").'),
+    duration: Optional[int] = typer.Option(None, "--duration", "-D", help="Estimated duration in minutes."),
 ):
-    """Adds a new task to OmniFocus with detailed options including recurrence, folder/project placement, and tags."""
+    """Adds a new task to OmniFocus with detailed options including recurrence, folder/project placement, tags, and duration."""
     if project_name and folder_name:
         print("Error: --project and --folder cannot be used together", file=sys.stderr)
         raise typer.Exit(code=1)
@@ -380,7 +389,8 @@ def add_detailed_task_command(
         'tags': tags,
         'due_date': due_date,
         'defer_date': defer_date,
-        'recurrence_rule': recurrence_rule
+        'recurrence_rule': recurrence_rule,
+        'duration': duration
     })
     handle_add_detailed_task(args)
 
@@ -423,7 +433,7 @@ def prioritize(
     limit: int = typer.Option(10, "--limit", "-l", help="Number of tasks to include in AI prioritization."),
     finance: bool = typer.Option(False, "--finance", "-f", help="Focus on organizing and simplifying finance-related tasks."),
     deduplicate: bool = typer.Option(False, "--deduplicate", "-d", help="Find and suggest consolidation of duplicate tasks."),
-    file: Optional[str] = typer.Option(None, "--file", help="Path to the OmniFocus JSON export file.")
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file (defaults to latest export).")
 ):
     """Use AI to prioritize tasks in OmniFocus."""
     prioritize_command(file=file, project=project, limit=limit, finance=finance, deduplicate=deduplicate)
@@ -469,6 +479,78 @@ def calendar(
         'project': project
     })
     handle_calendar(args)
+
+@app.command("icalbuddy-test")
+def icalbuddy_test():
+    """Test icalBuddy integration and permissions."""
+    args = type('Args', (), {})
+    handle_icalbuddy_test(args)
+
+@app.command("icalbuddy-verify")
+def icalbuddy_verify(
+    task_name: str = typer.Option(..., "--task", "-t", help="Name of the task to verify"),
+    notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Optional task notes for verification"),
+):
+    """Verify if a task corresponds to real calendar events."""
+    args = type('Args', (), {
+        'task_name': task_name,
+        'notes': notes
+    })
+    handle_icalbuddy_verify(args)
+
+@app.command("icalbuddy-conflicts")
+def icalbuddy_conflicts(
+    start_time: str = typer.Option(..., "--start", "-s", help="Start time (YYYY-MM-DD HH:MM)"),
+    end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
+):
+    """Check for scheduling conflicts in a time range."""
+    args = type('Args', (), {
+        'start_time': start_time,
+        'end_time': end_time
+    })
+    handle_icalbuddy_conflicts(args)
+
+@app.command("calendar-test")
+def calendar_test():
+    """Test AppleScript calendar integration (works without special permissions)."""
+    args = type('Args', (), {})
+    handle_applescript_calendar_test(args)
+
+@app.command("calendar-verify")
+def calendar_verify(
+    task_name: str = typer.Option(..., "--task", "-t", help="Name of the task to verify"),
+    notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Optional task notes for verification"),
+):
+    """Verify if a task corresponds to real calendar events using AppleScript."""
+    args = type('Args', (), {
+        'task_name': task_name,
+        'notes': notes
+    })
+    handle_applescript_calendar_verify(args)
+
+@app.command("calendar-conflicts")
+def calendar_conflicts(
+    start_time: str = typer.Option(..., "--start", "-s", help="Start time (YYYY-MM-DD HH:MM)"),
+    end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
+):
+    """Check for scheduling conflicts in a time range using AppleScript."""
+    args = type('Args', (), {
+        'start_time': start_time,
+        'end_time': end_time
+    })
+    handle_applescript_calendar_conflicts(args)
+
+@app.command("calendar-events")
+def calendar_events(
+    start_time: str = typer.Option(..., "--start", "-s", help="Start time (YYYY-MM-DD HH:MM)"),
+    end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
+):
+    """Get all calendar events in a time range using AppleScript."""
+    args = type('Args', (), {
+        'start_time': start_time,
+        'end_time': end_time
+    })
+    handle_applescript_calendar_events(args)
 
 @app.command("imessage")
 def imessage(
@@ -526,13 +608,36 @@ def search(
     })
     handle_search(args)
 
+# ---------------------------------------------------------------------------
+# Compatibility shim
+# ---------------------------------------------------------------------------
+
+# Older versions of this script referenced a helper called
+# `fetch_projects_from_json()` to quickly extract the project list from a JSON
+# export.  That helper was replaced by the more robust
+# `load_and_prepare_omnifocus_data()` pipeline, but some stale installations or
+# documentation may still invoke it.  To avoid a hard failure (NameError) we
+# provide a thin wrapper that delegates to the new implementation.
+
+
+def fetch_projects_from_json(json_file_path: str):  # noqa: N802  pylint: disable=invalid-name
+    """Return a mapping of project_id -> project_dict from an OmniFocus JSON export.
+
+    This keeps backward compatibility with scripts or docs that still expect a
+    `fetch_projects_from_json()` helper.  Internally we simply load the full
+    structured export and return its `projects_map`.
+    """
+    prepared = load_and_prepare_omnifocus_data(json_file_path)
+    return prepared.get("projects_map", {})
+
 @app.command("list-projects")
 def list_projects(
     file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
 ):
     """List all project names in OmniFocus (fast)."""
-    data = load_and_prepare_omnifocus_data(file)
-    projects_map = data.get('projects_map', {})
+    # Use the compatibility helper so that we only have one code-path for
+    # fetching projects.  Note: the helper returns a dict mapping id->project.
+    projects_map = fetch_projects_from_json(file)
     if not projects_map:
         print("No projects found or error fetching projects.")
         return
@@ -540,7 +645,6 @@ def list_projects(
     for project_id, project in projects_map.items():
         print(f"- {project.get('name', 'Unnamed Project')} (ID: {project_id})")
 
-# New merge-projects command
 @app.command("merge-projects")
 def merge_projects_command(
     source_id: str = typer.Option(..., "--source-id", "-s", help="ID of the project to merge tasks from."),
@@ -555,7 +659,6 @@ def merge_projects_command(
     })
     handle_merge_projects(args)
 
-# New create-project command
 @app.command("create-project")
 def create_project_command(
     title: str = typer.Option(..., "--title", "-t", help="Title of the new project."),
@@ -564,7 +667,6 @@ def create_project_command(
     """Creates a new project, optionally within a specified folder."""
     handle_create_project(title=title, folder_name=folder_name)
 
-# New delete-project command
 @app.command("delete-project")
 def delete_project_command(
     project_id: str = typer.Option(..., "--id", help="ID of the project to delete.")
@@ -575,7 +677,6 @@ def delete_project_command(
     })
     handle_delete_project(args)
 
-# New delete-task command
 @app.command("delete-task")
 def delete_task_command(
     task_id: str = typer.Option(..., "--id", help="ID of the task to delete.")
@@ -809,10 +910,20 @@ def list_live_tasks_command(
 
 @app.command("list-live-projects")
 def list_live_projects_command(
-    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format.")
 ):
-    # Implementation should use the file argument to load data
-    pass  # Replace with actual logic
+    """List live projects directly from OmniFocus via AppleScript.
+
+    The command is intentionally fast and bypasses any JSON export file.  When
+    the `--json` flag is supplied we emit structured JSON; otherwise a
+    human-friendly plain-text table is printed.  The heavy lifting is done in
+    `commands.list_command.handle_list_live_projects` so we simply forward the
+    option.
+    """
+    from commands.list_command import handle_list_live_projects  # Imported lazily to avoid any Typer circulars
+
+    args = type("Args", (), {"json_output": json_output})
+    handle_list_live_projects(args)
 
 @app.command("add-calendar-event")
 def add_calendar_event_command(
@@ -1645,7 +1756,7 @@ def next_command():
 
 @app.command("archive-completed")
 def archive_completed_command(
-    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to the OmniFocus JSON export file. Uses latest export if not specified."),
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", "-f", help="Path to the OmniFocus JSON export file (defaults to latest export)."),
     age_days: int = typer.Option(0, "--age-days", "-a", help="Minimum age in days for archiving completed items (0 = archive all completed items immediately)."),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be archived without making changes."),
     force: bool = typer.Option(False, "--force", help="Archive without confirmation prompt."),
@@ -1663,22 +1774,74 @@ def archive_completed_command(
 
 @app.command("diagnostics")
 def diagnostics():
-    """Check system health for OmniFocus automation."""
+    """Comprehensive health check – export, validation, DB ingest, duplicates."""
+    from utils.logger import get_logger
+    log = get_logger("diagnostics")
+
     console = Console()
-    # Check if OmniFocus is running
+
+    # 1) OmniFocus app process
     try:
         result = subprocess.run(["pgrep", "-x", "OmniFocus"], capture_output=True)
         is_running = result.returncode == 0
     except Exception as e:
         is_running = False
         error_msg = str(e)
-    if is_running:
-        console.print("✅ OmniFocus is running", style="green")
+    console.print(("✅" if is_running else "❌") + " OmniFocus running", style="green" if is_running else "red")
+    if not is_running and 'error_msg' in locals():
+        console.print(f"    {error_msg}")
+
+    # 2) Latest export & validation
+    try:
+        from utils.ensure_export import ensure_fresh_export
+        export_path = ensure_fresh_export(1800)
+        console.print(f"✅ Latest export: {export_path}", style="green")
+    except Exception as e:
+        console.print(f"❌ Export failed: {e}", style="red")
+        export_path = None
+
+    # 3) Counts & validation via loader
+    if export_path:
+        from utils.data_loading import load_and_prepare_omnifocus_data
+        data = load_and_prepare_omnifocus_data(export_path)
+        if data:
+            console.print(
+                f"✅ Export validation passed – Tasks: {len(data['all_tasks'])}, Projects: {len(data['projects_map'])}",
+                style="green",
+            )
+        else:
+            console.print("❌ Export validation failed – see above errors", style="red")
+
+    # 4) DB status
+    db_path = Path("data/omnifocus.sqlite")
+    if db_path.exists():
+        import sqlite3, datetime as _dt
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(lastSeen) FROM tasks")
+        last_seen = cur.fetchone()[0]
+        conn.close()
+        console.print(f"✅ DB present – lastSeen max: {last_seen}", style="green")
     else:
-        msg = f"❌ OmniFocus is NOT running"
-        if 'error_msg' in locals():
-            msg += f" (Error: {error_msg})"
-        console.print(msg, style="red")
+        console.print("❌ SQLite DB not found. Run 'ofcli ingest' first.", style="red")
+
+    # 5) Potential duplicates from last ingest report
+    # (simple heuristic: flag tasks with same name+project appearing >1)
+    if db_path.exists():
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT name, projectId, COUNT(*) FROM tasks GROUP BY name, projectId HAVING COUNT(*) > 1 LIMIT 5"
+        )
+        dups = cur.fetchall()
+        conn.close()
+        if dups:
+            console.print(f"⚠️  Potential duplicate tasks found ({len(dups)} samples):", style="yellow")
+            for name, pid, cnt in dups:
+                console.print(f"   • '{name}' (project {pid or 'None'}) – {cnt} copies")
+        else:
+            console.print("✅ No duplicate tasks detected (name+project heuristic)", style="green")
 
 @app.command("ingest")
 def ingest_command(
@@ -1772,6 +1935,237 @@ def dashboard_command(
         cmd.append("--open")
     subprocess.run(cmd, check=True)
     print("Dashboard generated.")
+
+# ---------------------------------------------------------------------------
+# Diagnostics: Task/Project tree statistics
+# ---------------------------------------------------------------------------
+
+
+@app.command("schedule")
+def schedule_command(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the event."),
+    description: str = typer.Option(..., "--description", "-d", help="Description of the event."),
+    date: str = typer.Option(..., "--date", help="Event date (YYYY-MM-DD)."),
+    time: str = typer.Option("08:00", "--time", help="Event start time (HH:MM, 24-hour, default: 08:00)."),
+    location: str = typer.Option(..., "--location", "-l", help="Event location."),
+    attendees: str = typer.Option(..., "--attendees", help="Comma-separated list of attendees (family members)."),
+    duration: int = typer.Option(60, "--duration", help="Duration in minutes (default: 60)."),
+    priority: str = typer.Option("medium", "--priority", help="Event priority (low, medium, high, critical)."),
+    create_event: bool = typer.Option(True, "--create-event", help="Automatically create calendar event."),
+    task_id: Optional[str] = typer.Option(None, "--task-id", help="Specific OmniFocus Task ID to complete after scheduling (for precise matching)."),
+):
+    """Schedule a family event with calendar integration and conflict analysis."""
+    try:
+        from commands.schedule_family import schedule_family_event
+        attendee_list = [a.strip() for a in attendees.split(",")]
+        analysis = schedule_family_event(
+            title=title,
+            description=description,
+            date_str=date,
+            location_name=location,
+            attendees=attendee_list,
+            duration_minutes=duration,
+            priority=priority,
+            create_calendar_event=create_event,
+            time_str=time,
+            task_id=task_id
+        )
+        print("✅ Family scheduling completed successfully!")
+    except ImportError as e:
+        print(f"❌ Error importing family scheduler: {e}")
+    except Exception as e:
+        print(f"❌ Error in family scheduling: {e}")
+
+@app.command("tree-stats")
+def tree_stats_command(
+    file: str = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file."),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON instead of text."),
+    top: int = typer.Option(20, "--top", help="Show N largest projects/folders."),
+    state_breakdown: bool = typer.Option(False, "--state-breakdown", help="Include per-depth state counts."),
+    soon: int = typer.Option(7, "--soon", help="Days window for 'due soon' stats."),
+):
+    """Print statistics about task counts and nesting depth across the database."""
+
+    print(f"Loading export from: {file}")
+    prepared = load_and_prepare_omnifocus_data(file)
+    tasks = prepared.get("all_tasks", [])
+    projects_map = prepared.get("projects_map", {})
+    folders_map = prepared.get("folders_map", {})
+
+    # Build lookup for parent relationships
+    id_to_task = {t["id"]: t for t in tasks}
+
+    def depth(task):
+        d = 1
+        current = task
+        # Walk parent chain inside tasks only
+        while current.get("parentId"):
+            parent = id_to_task.get(current["parentId"])
+            if not parent:
+                break
+            d += 1
+            current = parent
+        return d
+
+    depth_histogram: dict[int, int] = {}
+    project_counts: dict[str, int] = {}
+    depth_state: dict[int, dict[str, int]] = {}
+
+    for t in tasks:
+        d = depth(t)
+        depth_histogram[d] = depth_histogram.get(d, 0) + 1
+
+        proj_id = t.get("projectId")
+        if proj_id:
+            project_counts[proj_id] = project_counts.get(proj_id, 0) + 1
+
+        # state tallies
+        state_bucket = depth_state.setdefault(d, {"active": 0, "completed": 0, "due": 0, "defer": 0})
+        if t.get("completed") or t.get("status") == "Completed":
+            state_bucket["completed"] += 1
+        else:
+            state_bucket["active"] += 1
+        if t.get("dueDate"):
+            state_bucket["due"] += 1
+        if t.get("deferDate"):
+            state_bucket["defer"] += 1
+
+    max_depth = max(depth_histogram) if depth_histogram else 0
+
+    # Build project display list
+    top_projects = sorted(project_counts.items(), key=lambda kv: kv[1], reverse=True)[: top]
+
+    today = datetime.utcnow().date()
+    soon_limit = today + timedelta(days=soon)
+
+    overdue = 0
+    due_soon = 0
+    active_tasks = 0
+    completed_tasks = 0
+    flagged_tasks = 0
+    with_due = 0
+    with_defer = 0
+
+    for t in tasks:
+        is_completed = t.get("completed") or t.get("status") == "Completed"
+        if is_completed:
+            completed_tasks += 1
+        else:
+            active_tasks += 1
+        if t.get("flagged"):
+            flagged_tasks += 1
+        due_str = t.get("dueDate")
+        if due_str:
+            with_due += 1
+            try:
+                due_date = datetime.fromisoformat(due_str.rstrip("Z")).date()
+                if not is_completed and due_date < today:
+                    overdue += 1
+                elif not is_completed and today <= due_date <= soon_limit:
+                    due_soon += 1
+            except Exception:
+                pass
+        if t.get("deferDate"):
+            with_defer += 1
+
+    without_dates = len(tasks) - with_due - with_defer
+
+    stats = {
+        "total_tasks": len(tasks),
+        "active_tasks": active_tasks,
+        "completed_tasks": completed_tasks,
+        "flagged_tasks": flagged_tasks,
+        "with_due": with_due,
+        "with_defer": with_defer,
+        "without_dates": without_dates,
+        "overdue": overdue,
+        "due_soon": due_soon,
+        "soon_window_days": soon,
+        "max_depth": max_depth,
+        "depth_histogram": depth_histogram,
+        "depth_state": depth_state if state_breakdown else None,
+        "top_projects": [
+            {
+                "project_id": pid,
+                "name": projects_map.get(pid, {}).get("name", "Unknown"),
+                "task_count": cnt,
+                "folder": folders_map.get(projects_map.get(pid, {}).get("folderId", ""), {}).get("name", "") or None,
+            }
+            for pid, cnt in top_projects
+        ],
+    }
+
+    if json_output:
+        import json
+
+        print(json.dumps(stats, indent=2))
+    else:
+        print("\n=== OmniFocus Tree Statistics ===")
+        print(f"Active: {stats['active_tasks']}  |  Completed: {stats['completed_tasks']}  |  Flagged: {stats['flagged_tasks']}")
+        print(f"With due: {stats['with_due']}  |  With defer: {stats['with_defer']}  |  No dates: {stats['without_dates']}")
+        print(f"Overdue: {stats['overdue']}  |  Due in next {soon} days: {stats['due_soon']}")
+        print(f"Total tasks: {stats['total_tasks']}")
+        print(f"Maximum depth: {stats['max_depth']}\n")
+
+        print("Depth histogram:")
+        for level in sorted(stats["depth_histogram"].keys()):
+            print(f"  Level {level}: {stats['depth_histogram'][level]}")
+
+        print(f"\nTop {top} projects by task count:")
+        for p in stats["top_projects"]:
+            line = f"  • {p['name']} (ID {p['project_id']}) – {p['task_count']} tasks"
+            if p.get("folder"):
+                line += f" [Folder: {p['folder']}]"
+            print(line)
+
+        if state_breakdown:
+            print("\nPer-depth state breakdown:")
+            for level in sorted(depth_state.keys()):
+                s = depth_state[level]
+                print(
+                    f"  Level {level}: active {s['active']}, completed {s['completed']}, due {s['due']}, defer {s['defer']}"
+                )
+
+@app.command("emergency-calendar")
+def emergency_calendar():
+    """Emergency calendar access when automated methods fail (opens Calendar.app)."""
+    from commands.emergency_calendar_command import handle_emergency_calendar
+    args = type('Args', (), {})
+    handle_emergency_calendar(args)
+
+@app.command("emergency-calendar-analysis")  
+def emergency_calendar_analysis():
+    """Analyze why automated calendar methods are failing."""
+    from commands.emergency_calendar_command import handle_emergency_calendar_report
+    args = type('Args', (), {})
+    handle_emergency_calendar_report(args)
+
+@app.command("calendar-today")
+def calendar_today():
+    """Show today's calendar events using EventKit (FAST - no timeouts)."""
+    from commands.eventkit_calendar_command import handle_eventkit_calendar_today
+    args = type('Args', (), {})
+    handle_eventkit_calendar_today(args)
+
+@app.command("calendar-family") 
+def calendar_family():
+    """Show family calendar events using EventKit (FAST - no timeouts)."""
+    from commands.eventkit_calendar_command import handle_eventkit_family_events
+    args = type('Args', (), {})
+    handle_eventkit_family_events(args)
+
+@app.command("calendar-conflicts")
+def calendar_conflicts(
+    start_time: str = typer.Option(..., "--start", "-s", help="Start time (YYYY-MM-DD HH:MM)"),
+    end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
+):
+    """Check for calendar conflicts using EventKit (FAST - no timeouts)."""
+    from commands.eventkit_calendar_command import handle_eventkit_calendar_conflicts
+    args = type('Args', (), {
+        'start_time': start_time,
+        'end_time': end_time
+    })
+    handle_eventkit_calendar_conflicts(args)
 
 if __name__ == "__main__":
     app() 
