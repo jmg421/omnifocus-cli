@@ -6,7 +6,7 @@ Systematically moves inbox items to appropriate projects using MCP tools
 
 import json
 import sys
-import subprocess
+from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified helper
 import time
 from typing import List, Dict, Tuple
 
@@ -56,20 +56,10 @@ tell application "OmniFocus"
 end tell
 '''
         
-        # Execute AppleScript
-        result = subprocess.run(
-            ['osascript', '-e', applescript],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
-        if result.returncode == 0:
-            print(f"  ✅ Moved: {task_name[:60]}...")
-            return True
-        else:
-            print(f"  ❌ Failed: {task_name[:60]}... - {result.stderr}")
-            return False
+        # Execute via unified helper
+        execute_omnifocus_applescript(applescript)
+        print(f"  ✅ Moved: {task_name[:60]}...")
+        return True
             
     except Exception as e:
         print(f"  ❌ Error moving task: {e}")

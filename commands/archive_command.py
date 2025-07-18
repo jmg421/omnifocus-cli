@@ -3,6 +3,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
+from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.data_loading import load_and_prepare_omnifocus_data, get_latest_json_export_path
 
@@ -156,9 +157,9 @@ def delete_items_from_omnifocus(items_to_delete: List[Dict[str, Any]], item_type
             import time
             time.sleep(0.5)
         
-        # Create the AppleScript with proper escaping
-        id_list = "{" + ", ".join(f'"{id_}"' for id_ in batch_ids) + "}"
-        
+        # Build AppleScript string with ID list
+        id_list = "{" + ", ".join(f'\"{id_}\"' for id_ in batch_ids) + "}"
+
         applescript = f'''tell application "OmniFocus"
     tell default document
         set deletedCount to 0
@@ -179,34 +180,13 @@ def delete_items_from_omnifocus(items_to_delete: List[Dict[str, Any]], item_type
         return deletedCount
     end tell
 end tell'''
-        
+
         try:
-            import subprocess
-            import tempfile
-            import os
-            
-            # Write AppleScript to a temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.applescript', delete=False) as f:
-                f.write(applescript)
-                temp_script = f.name
-            
-            try:
-                result = subprocess.run(['osascript', temp_script], 
-                                      capture_output=True, text=True, timeout=120)
-                
-                if result.returncode == 0:
-                    batch_deleted = int(result.stdout.strip())
-                    total_deleted += batch_deleted
-                    # Only show progress every 10 batches to avoid spam
-                    if batch_num % 10 == 0 or batch_num == total_batches:
-                        print(f"  ✅ Progress: {total_deleted} {item_type} deleted ({batch_num}/{total_batches} batches)")
-                else:
-                    print(f"  ❌ Error in batch {batch_num}: {result.stderr}")
-                    return False
-            finally:
-                # Clean up temp file
-                os.unlink(temp_script)
-                
+            result_str = execute_omnifocus_applescript(applescript)
+            batch_deleted = int(result_str) if result_str.isdigit() else 0
+            total_deleted += batch_deleted
+            if batch_num % 10 == 0 or batch_num == total_batches:
+                print(f"  ✅ Progress: {total_deleted} {item_type} deleted ({batch_num}/{total_batches} batches)")
         except Exception as e:
             print(f"  ❌ Error executing AppleScript batch: {e}")
             return False

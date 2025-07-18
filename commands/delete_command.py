@@ -1,10 +1,8 @@
 """
 Handles the logic for the 'delete-project' and potentially other delete commands.
 """
-import subprocess
-import tempfile
-import os
 from typing import Optional
+from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
 
 def generate_delete_project_applescript(project_id: str) -> str:
     """Generates AppleScript to delete a project by its ID."""
@@ -51,31 +49,9 @@ def handle_delete_project(args):
     print(applescript_command)
     print("------------------------------------\n")
 
-    execute_omnifocus_applescript = None
     try:
-        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
-    except ImportError:
-        print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
-
-    try:
-        if execute_omnifocus_applescript:
-            print("Attempting to execute AppleScript via imported function...")
-            result = execute_omnifocus_applescript(applescript_command)
-        else:
-            print("Attempting to execute AppleScript via direct 'osascript' call (using temp file)...")
-            tmp_file_path = None
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
-                    tmp_script_file.write(applescript_command)
-                    tmp_file_path = tmp_script_file.name
-                process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
-                if process.returncode == 0:
-                    result = process.stdout.strip()
-                else:
-                    result = f"Error: osascript failed with temp file. STDERR: {process.stderr.strip()}"
-            finally:
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path)
+        print("Executing AppleScript via unified helper…")
+        result = execute_omnifocus_applescript(applescript_command)
         
         print(f"OmniFocus AppleScript execution result:")
         print(result)
@@ -126,31 +102,9 @@ def handle_delete_task(args):
     print(applescript_command)
     print("------------------------------------\n")
 
-    execute_omnifocus_applescript = None
     try:
-        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
-    except ImportError:
-        print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
-
-    try:
-        if execute_omnifocus_applescript:
-            print("Attempting to execute AppleScript via imported function...")
-            result = execute_omnifocus_applescript(applescript_command)
-        else:
-            print("Attempting to execute AppleScript via direct 'osascript' call (using temp file)...")
-            tmp_file_path = None
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
-                    tmp_script_file.write(applescript_command)
-                    tmp_file_path = tmp_script_file.name
-                process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
-                if process.returncode == 0:
-                    result = process.stdout.strip()
-                else:
-                    result = f"Error: osascript failed with temp file. STDERR: {process.stderr.strip()}"
-            finally:
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path)
+        print("Executing AppleScript via unified helper…")
+        result = execute_omnifocus_applescript(applescript_command)
         
         print(f"OmniFocus AppleScript execution result:")
         print(result)

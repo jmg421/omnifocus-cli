@@ -4,6 +4,15 @@ import json
 from datetime import datetime, date
 from typing import Optional, Any, Dict, List
 
+# Add pydantic validation
+from typing import Dict, Any
+
+try:
+    from .export_schema import ExportModel
+except ImportError:
+    # Fallback when utils imported relatively from scripts outside package
+    from export_schema import ExportModel
+
 def get_latest_json_export_path():
     # Look in ../data relative to omni-cli directory
     data_dir = '../data'
@@ -51,6 +60,24 @@ def load_and_prepare_omnifocus_data(json_file_path: str) -> Dict[str, Any]:
     try:
         with open(json_file_path, 'r') as f:
             raw_data = json.load(f)
+        # Validate against schema – will raise ValueError if invalid
+        try:
+            ExportModel.parse_obj(raw_data)
+        except Exception as val_err:
+            from pydantic.error_wrappers import ValidationError
+            if isinstance(val_err, ValidationError):
+                # Pretty-print the first few errors for clarity
+                errs = val_err.errors()[:5]
+                print(f"Validation error loading {json_file_path}:", file=sys.stderr)
+                for e in errs:
+                    loc = '.'.join(str(p) for p in e.get('loc', []))
+                    msg = e.get('msg')
+                    print(f"  • {loc}: {msg}", file=sys.stderr)
+                if len(val_err.errors()) > 5:
+                    print(f"  …and {len(val_err.errors()) - 5} more errors", file=sys.stderr)
+            else:
+                print(f"Validation error loading {json_file_path}: {val_err}", file=sys.stderr)
+            return {}
     except FileNotFoundError:
         print(f"Error: File not found at {json_file_path}", file=sys.stderr)
         return {}

@@ -2,21 +2,17 @@
 
 A powerful command-line interface for OmniFocus with AI integration and bidirectional Evernote sync for seamless context switching.
 
-## Features
+## Key Features (v0.2)
 
-- Add tasks and projects
-- List and filter tasks
-- Complete tasks
-- AI-powered task prioritization
-- Delegate tasks with ease
-- Full Evernote integration:
-  - Sync tasks with related notes
-  - Switch contexts seamlessly
-  - Link actions to reference material
-  - Create tasks from notes
-  - Attach notes to tasks
-  - Smart context detection
-  - Automatic task-note linking
+* **Authoritative AppleScript export** – every CLI operation pulls a fresh JSON export from OmniFocus (via `ensure_fresh_export`) so you’re always working with up-to-date data.
+* **Schema-validated importer** – exports are validated with Pydantic models before processing; malformed data is rejected with clear error messages.
+* **SQLite ingest with change report** – `scripts/ingest_export.py` upserts projects/tasks and prints a summary of new / updated / possible-duplicate items.
+* Rich CLI:
+  * Add, list, complete, and delegate tasks & projects.
+  * AI-powered task prioritization.
+* **Evernote integration** (optional, legacy) – link tasks ⇄ notes for contextual reference.
+
+> ⚠️  CSV and Markdown importers are considered **legacy utilities**. They remain available behind the `--input-format csv` flag but are not the primary sync path.
 
 ## Requirements
 
@@ -24,6 +20,24 @@ A powerful command-line interface for OmniFocus with AI integration and bidirect
 - OmniFocus for Mac
 - API keys for OpenAI or Anthropic (for AI features)
 - Evernote account
+
+## Unified AppleScript Runner (experimental)
+
+CLI commands that interact with OmniFocus now route through a central helper that decides **how** to run AppleScript:
+
+* **Default**: uses the macOS `osascript` binary directly (unchanged behaviour).
+* **Opt-in experimental path**: set an environment variable to enable a unified runner script that writes the AppleScript to a temp file and executes it through `scripts/run_script.py`.  This isolates AppleScript execution, makes logging easier, and will eventually support sandboxed mocking in unit-tests.
+
+Activate the new path per-invocation:
+
+```bash
+# any ofcli sub-command – example:
+OF_RUNNER_V2=1 python3 omni-cli/ofcli.py list-live-projects --json
+```
+
+The helper lives at `omnifocus_api/apple_script_client.execute_omnifocus_applescript`.  If you are writing new scripts or modifying existing ones, call this function instead of spawning `osascript` yourself.  It automatically honours the `OF_RUNNER_V2` flag.
+
+> Note: JavaScript for Automation (.omnijs) scripts are also supported; the runner adds the `-l JavaScript` flag when the file extension is `.omnijs`.
 
 ## Installation
 
@@ -69,7 +83,7 @@ EVERNOTE_SANDBOX=true  # Set to false for production
    - Grant access to your Evernote account
    - Authorization completes automatically
 
-## Usage
+## Usage overview
 
 ### Task-Note Integration
 
@@ -162,10 +176,28 @@ ofcli delegate task_id --to "colleague@example.com"
 ofcli test-evernote
 ```
 
-### Export Task to Evernote
+### Ingest fresh export into the local database
 
 ```bash
-ofcli export-task [TASK_ID] --to evernote
+python3 scripts/ingest_export.py  # automatically exports, archives, validates, ingests, and prints a change report
+```
+
+Example summary:
+
+```
+Projects – new: 2, updated: 1
+Tasks    – new: 14, updated: 3, potential dup names: 1
+  • Possible duplicate task 'Pay rent' (id 7aB…)
+```
+
+### Evernote helpers (legacy)
+
+```bash
+# Link a note to a task
+ofcli link task_id --note note_id
+
+# Export task context to Evernote
+ofcli export-task task_id --to evernote
 ```
 
 ## Advanced Usage

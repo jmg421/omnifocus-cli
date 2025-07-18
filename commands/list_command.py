@@ -113,7 +113,14 @@ def handle_list_live_tasks_in_project(args):
                 with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
                     tmp_script_file.write(applescript_command)
                     tmp_file_path = tmp_script_file.name
-                process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
+                # Use unified runner if flag set
+                import os, pathlib
+                if os.getenv("OF_RUNNER_V2") == "1":
+                    runner = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "run_script.py"
+                    cmd = ["python3", str(runner), "--script", tmp_file_path]
+                else:
+                    cmd = ["osascript", tmp_file_path]
+                process = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 if process.returncode == 0:
                     raw_result = process.stdout.strip()
                 else:
@@ -188,73 +195,92 @@ def generate_list_live_projects_applescript() -> str:
     return script
 
 def handle_list_live_projects(args):
-    applescript_command = generate_list_live_projects_applescript()
-    print("\nAttempting to list all projects with details live from OmniFocus...")
-    # print("Generated AppleScript (for review):") # Optional: can be verbose
-    # print(applescript_command + "\n")
+    """List live OmniFocus projects via AppleScript.
 
-    execute_omnifocus_applescript = None
+    Args:
+        args: Namespace-like object. May include a boolean `json_output` attribute.
+    """
+    import json
+    import os
+    import pathlib
+    import subprocess
+    import tempfile
+
+    applescript_command = generate_list_live_projects_applescript()
+    json_output = getattr(args, "json_output", False)
+
+    # Decide how we'll execute the AppleScript: try the high-level helper first
     try:
-        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # pylint: disable=import-error
     except ImportError:
-        print("Info: Using direct osascript call for AppleScript execution.")
+        execute_omnifocus_applescript = None
 
     raw_result = ""
+    tmp_file_path: str | None = None
     try:
         if execute_omnifocus_applescript:
             raw_result = execute_omnifocus_applescript(applescript_command)
         else:
-            # ... (osascript execution using temp file as before) ...
-            tmp_file_path = None
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
-                    tmp_script_file.write(applescript_command)
-                    tmp_file_path = tmp_script_file.name
-                process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
-                if process.returncode == 0:
-                    raw_result = process.stdout.strip()
-                else:
-                    raw_result = f"Error: osascript failed. STDERR: {process.stderr.strip()}"
-            finally:
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path)
-        
-        if raw_result.startswith("Error:"):
-            print(f"Failed to list projects: {raw_result}")
-        elif not raw_result:
-            print("No projects found or database is empty.")
-        else:
-            print("\nLive projects from OmniFocus:")
-            project_strings = raw_result.split(", ") # AppleScript lists of strings are comma-space delimited when coerced to text
-            if not project_strings or (len(project_strings) == 1 and project_strings[0] == ""): 
-                print("No projects found or an issue with parsing the project list.")
-            else: 
-                for project_str in project_strings:
-                    if not project_str.strip(): continue # Skip empty strings if any
-                    parts = {}
-                    try:
-                        for item in project_str.split("|"):
-                            key_value = item.split("=", 1)
-                            if len(key_value) == 2:
-                                parts[key_value[0]] = key_value[1]
-                            elif key_value[0]: # Handle case like 'Folder=' (empty folder name)
-                                parts[key_value[0]] = ""
-                        
-                        project_id = parts.get("ID", "N/A")
-                        project_name = parts.get("Name", "Unnamed Project")
-                        project_status = parts.get("Status", "unknown")
-                        folder_name = parts.get("Folder", "")
-                        
-                        output_line = f"- {project_name} (ID: {project_id}) [Status: {project_status}]"
-                        if folder_name and folder_name != "error_getting_folder":
-                            output_line += f" [Folder: {folder_name}]"
-                        elif folder_name == "error_getting_folder":
-                            output_line += f" [Folder: Error retrieving]"
-                        print(output_line)
-                    except Exception as e_parse:
-                        print(f"Error parsing project string '{project_str}': {e_parse}")
-                        print(f"Original string part: {project_str}") # Print problematic part
+            # Write script to a temp file then invoke either our unified runner or osascript
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".applescript") as tmp_script_file:
+                tmp_script_file.write(applescript_command)
+                tmp_file_path = tmp_script_file.name
 
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+            if os.getenv("OF_RUNNER_V2") == "1":
+                runner = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "run_script.py"
+                cmd = ["python3", str(runner), "--script", tmp_file_path]
+            else:
+                cmd = ["osascript", tmp_file_path]
+
+            process = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if process.returncode == 0:
+                raw_result = process.stdout.strip()
+            else:
+                print(f"Error executing AppleScript: {process.stderr.strip()}")
+                return
+    finally:
+        # Always clean up the temporary file if we created one
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
+
+    if not raw_result:
+        print("No projects found or database is empty.")
+        return
+    if raw_result.startswith("Error:"):
+        print(f"Failed to list projects: {raw_result}")
+        return
+
+    # Parse the delimited list returned from AppleScript
+    projects_parsed: list[dict[str, str]] = []
+    project_strings = raw_result.split(", ")  # AppleScript coerces lists to comma+space separated strings
+    for project_str in project_strings:
+        if not project_str.strip():
+            continue
+        parts: dict[str, str] = {}
+        for item in project_str.split("|"):
+            key_value = item.split("=", 1)
+            if len(key_value) == 2:
+                parts[key_value[0]] = key_value[1]
+            elif key_value[0]:
+                # Handle cases like "Folder=" with an empty value
+                parts[key_value[0]] = ""
+        projects_parsed.append(parts)
+
+    # Output
+    if json_output:
+        print(json.dumps(projects_parsed, indent=2))
+    else:
+        print("\nLive projects from OmniFocus:")
+        for proj in projects_parsed:
+            proj_id = proj.get("ID", "N/A")
+            proj_name = proj.get("Name", "Unnamed Project")
+            proj_status = proj.get("Status", "unknown")
+            folder_name = proj.get("Folder", "")
+
+            line = f"- {proj_name} (ID: {proj_id}) [Status: {proj_status}]"
+            if folder_name and folder_name != "error_getting_folder":
+                line += f" [Folder: {folder_name}]"
+            elif folder_name == "error_getting_folder":
+                line += " [Folder: Error retrieving]"
+            print(line)
 
