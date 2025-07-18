@@ -47,12 +47,14 @@ def _file_age_seconds(path: str) -> float:
 def _run_applescript_export() -> str:
     """Run the AppleScript exporter and return the path it prints."""
     try:
-        # -ss flag suppresses scripting addition result formatting (gives raw output)
-        result = subprocess.check_output([
-            "osascript",
-            "-ss",
-            APPLE_SCRIPT_PATH,
-        ])
+        if os.getenv("OF_RUNNER_V2") == "1":
+            runner = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "run_script.py"
+            cmd = ["python3", str(runner), "--script", APPLE_SCRIPT_PATH]
+        else:
+            # -ss flag suppresses scripting addition result formatting (gives raw output)
+            cmd = ["osascript", "-ss", APPLE_SCRIPT_PATH]
+
+        result = subprocess.check_output(cmd)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"AppleScript export failed: {e}")
 
