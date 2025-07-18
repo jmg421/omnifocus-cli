@@ -1,17 +1,35 @@
 from typing import List
 from omnifocus_api.data_models import OmniFocusTask
 import datetime
+import dateparser
 
 def parse_date_string(date_str: str):
     """
-    A stub function. Parse a user-supplied date string into something AppleScript can handle.
-    For now, just return the same string if it's in "YYYY-MM-DD" format.
-    Expand with dateparser or parsedatetime if desired.
+    Parse a user-supplied date string into AppleScript-compatible format.
+    Handles:
+      - YYYY-MM-DD (e.g., 2025-07-13)
+      - Natural language (e.g., 'tomorrow', 'next Friday')
+    Returns:
+      - 'Month DD, YYYY HH:MM:SS' (e.g., 'July 13, 2025 00:00:00')
+      - None if parsing fails
     """
-    # This is the simplest possible implementation
-    # In a real implementation, you would:
-    # 1. Use a library like dateparser to handle natural language dates
-    # 2. Convert the parsed date to the format required by AppleScript
+    if not date_str or not isinstance(date_str, str):
+        return None
+    # Try YYYY-MM-DD first
+    import re
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", date_str.strip())
+    if m:
+        from datetime import datetime
+        try:
+            dt = datetime.strptime(date_str.strip(), "%Y-%m-%d")
+            return dt.strftime("%B %d, %Y 00:00:00")
+        except Exception:
+            pass
+    # Fallback to dateparser
+    dt = dateparser.parse(date_str)
+    if dt:
+        return dt.strftime("%B %d, %Y %H:%M:%S")
+    # If all fails, return original string (AppleScript may error)
     return date_str
 
 

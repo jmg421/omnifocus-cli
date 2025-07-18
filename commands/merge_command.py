@@ -1,8 +1,7 @@
 """
 Handles the logic for the 'merge-projects' command.
 """
-import subprocess
-import shlex # For safely formatting arguments in shell commands
+from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified helper
 
 def generate_merge_applescript(source_id: str, target_id: str, delete_source: bool) -> str:
     """Generates the AppleScript to merge tasks from source project to target project."""
@@ -102,45 +101,15 @@ def handle_merge_projects(args):
     print(applescript_command)
     print("------------------------------------\n")
 
-    execute_omnifocus_applescript = None
     try:
-        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
-    except ImportError:
-        print("Info: Could not import 'execute_omnifocus_applescript' from 'omnifocus_api.apple_script_client'.")
-        print("Will use direct 'osascript' call as a fallback.")
-    except Exception as e_import_other:
-        print(f"An unexpected error occurred during import attempt: {e_import_other}")
-        print("Will use direct 'osascript' call as a fallback.")
+        print("Executing AppleScript via unified helper…")
+        result = execute_omnifocus_applescript(applescript_command)
+        print("OmniFocus AppleScript execution result:")
+        print(result)
+        if "Error:" in result:
+            print("Operation reported an error.")
 
-    try:
-        if execute_omnifocus_applescript:
-            print("Attempting to execute AppleScript via 'execute_omnifocus_applescript'...")
-            result = execute_omnifocus_applescript(applescript_command)
-            print(f"OmniFocus AppleScript execution successful via imported function.")
-            print(f"Result: {result}")
-            if "Error:" in result:
-                 print(f"Operation reported an error: {result}")
-        else:
-            # Fallback to direct osascript call
-            print("Attempting to execute AppleScript via direct 'osascript' call...")
-            cmd = ["osascript", "-e", applescript_command]
-            process = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        print("\nIMPORTANT: OmniFocus data has been changed. Re-export your OmniFocus data to refresh JSON exports if needed.")
 
-            if process.returncode == 0:
-                result = process.stdout.strip()
-                print(f"OmniFocus AppleScript execution (via osascript fallback) successful.")
-                print(f"Result: {result}")
-                if "Error:" in result:
-                    print(f"Operation reported an error: {result}")
-            else:
-                error_message = process.stderr.strip()
-                print(f"Error executing AppleScript with osascript (fallback):")
-                print(error_message)
-                return # Stop on error
-
-        # Common post-execution steps
-        print("\nIMPORTANT: OmniFocus data has been changed (or an attempt was made). ")
-        print("Review the results above. If successful, re-export your OmniFocus data to update 'data/omnifocus_export.json' for future queries.")
-            
     except Exception as e:
         print(f"An unexpected error occurred during AppleScript execution: {e}") 

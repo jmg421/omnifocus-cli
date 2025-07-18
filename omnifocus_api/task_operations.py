@@ -1,6 +1,6 @@
 """Task-related operations for OmniFocus."""
 from typing import List, Optional
-import subprocess
+from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified helper
 from .data_models import OmniFocusTask
 from .utils import escape_applescript_string
 
@@ -43,11 +43,7 @@ def complete_task(task_id: str) -> bool:
     '''
     
     try:
-        result = subprocess.run(["osascript", "-e", as_script], capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"AppleScript error: {result.stderr.strip()}")
-            return False
-        output = result.stdout.strip()
+        output = execute_omnifocus_applescript(as_script)
         if output.startswith("false:"):
             print(f"OmniFocus error: {output[6:]}")
             return False
@@ -81,20 +77,22 @@ def fetch_subtasks(task_id: str) -> List[OmniFocusTask]:
     end tell
     '''
     
-    result = subprocess.run(["osascript", "-e", as_script], capture_output=True, text=True)
+    try:
+        script_output = execute_omnifocus_applescript(as_script)
+    except Exception:
+        script_output = ""
     tasks = []
-    if result.returncode == 0:
-        for line in result.stdout.strip().split("\n"):
-            if not line.strip():
-                continue
-            parts = line.split("||")
-            if len(parts) >= 5:
-                task_id, name, note, completed_str, due_date_str = parts
-                tasks.append(OmniFocusTask(
-                    id=task_id,
-                    name=name,
-                    note=note,
-                    completed=(completed_str == "true"),
-                    due_date=due_date_str if due_date_str else None
-                ))
+    for line in script_output.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("||")
+        if len(parts) >= 5:
+            task_id, name, note, completed_str, due_date_str = parts
+            tasks.append(OmniFocusTask(
+                id=task_id,
+                name=name,
+                note=note,
+                completed=(completed_str == "true"),
+                due_date=due_date_str if due_date_str else None
+            ))
     return tasks 

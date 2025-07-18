@@ -1,9 +1,10 @@
 from omnifocus_api import apple_script_client
 from ai_integration.utils.format_utils import parse_date_string
-import subprocess # For the fallback osascript execution
-from typing import Optional, List # Added import for Optional and List
-import tempfile # Added for temporary file
-import os # Added for file operations
+from typing import Optional, List
+from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
+import subprocess  # Still used elsewhere (e.g., legacy calls)
+import tempfile
+import os
 from datetime import datetime # Keep this
 from dateutil.relativedelta import relativedelta # For robust date calculation
 
@@ -15,18 +16,21 @@ def handle_add(args):
     project = args.project
     note = args.note or ""
     due_date = parse_date_string(args.due) if args.due else None
+    duration = getattr(args, 'duration', None)
 
-    success, of_task_id = apple_script_client.create_task_via_applescript(
-        title=title,
-        project_name=project,
-        note=note,
-        due_date=due_date
-    )
-
-    if success:
-        print(f"Task '{title}' created in OmniFocus (ID: {of_task_id}).")
-    else:
-        print(f"Failed to create task '{title}' in OmniFocus.")
+    # Use the unified detailed handler for all adds
+    detailed_args = type('Args', (), {
+        'title': title,
+        'folder_name': None,
+        'project_name': project,
+        'note': note,
+        'tags': None,
+        'due_date': due_date,
+        'defer_date': None,
+        'recurrence_rule': None,
+        'duration': duration
+    })
+    handle_add_detailed_task(detailed_args)
 
 def escape_applescript_string(s: str) -> str:
     if not s: return ""
@@ -47,7 +51,8 @@ def generate_add_detailed_task_applescript(
     due_date_str: Optional[str],
     defer_date_str: Optional[str],
     recurrence_rule_str: Optional[str],
-    tags_list: Optional[List[str]]
+    tags_list: Optional[List[str]],
+    duration: Optional[int] = None
 ) -> str:
     script_parts = []
     script_parts.append('tell application "OmniFocus"')
@@ -84,6 +89,8 @@ def generate_add_detailed_task_applescript(
         script_parts.append(f'        set due date of newTask to date "{due_date_str}"')
     if defer_date_str:
         script_parts.append(f'        set defer date of newTask to date "{defer_date_str}"')
+    if duration is not None:
+        script_parts.append(f'        set estimated minutes of newTask to {duration}')
     
     # Add tags if provided
     if tags_list:
@@ -116,24 +123,25 @@ def generate_add_detailed_task_applescript(
 
 def handle_add_detailed_task(args):
     """
-    Creates a new task with detailed properties including recurrence.
+    Creates a new task with detailed properties including recurrence and duration.
     """
     title = args.title
     # DEBUG: Print the title as received by this function
     print(f"DEBUG: handle_add_detailed_task received title: '{title}'")
 
-    folder_name = args.folder_name
-    project_name = args.project_name
-    note = args.note
-    recurrence_rule_str = args.recurrence_rule
-    tags_str = args.tags # Get the comma-separated string of tags
+    folder_name = getattr(args, 'folder_name', None)
+    project_name = getattr(args, 'project_name', None)
+    note = getattr(args, 'note', None)
+    recurrence_rule_str = getattr(args, 'recurrence_rule', None)
+    tags_str = getattr(args, 'tags', None)
+    duration = getattr(args, 'duration', None)
 
     parsed_tags_list: Optional[List[str]] = None
     if tags_str:
         parsed_tags_list = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
 
     final_due_date_str = None
-    if args.due_date:
+    if getattr(args, 'due_date', None):
         dt_obj = None
         if args.due_date.lower() == "next month 1st":
             now = datetime.now()
@@ -156,7 +164,7 @@ def handle_add_detailed_task(args):
             final_due_date_str = dt_obj.strftime("%B %d, %Y %H:%M:%S") # e.g., "June 01, 2025 00:00:00"
 
     final_defer_date_str = None
-    if args.defer_date:
+    if getattr(args, 'defer_date', None):
         dt_obj = None
         if args.defer_date.lower() == "next month 1st":
             now = datetime.now()
@@ -191,7 +199,8 @@ def handle_add_detailed_task(args):
         final_due_date_str, 
         final_defer_date_str, 
         recurrence_rule_str,
-        parsed_tags_list # Pass the parsed list of tags
+        parsed_tags_list, # Pass the parsed list of tags
+        duration
     )
 
     print("\nGenerated AppleScript for add-task (for review):")
@@ -199,35 +208,9 @@ def handle_add_detailed_task(args):
     print(applescript_command)
     print("------------------------------------\n")
 
-    execute_omnifocus_applescript = None
     try:
-        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
-    except ImportError:
-        print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
-
-    try:
-        if execute_omnifocus_applescript:
-            print("Attempting to execute AppleScript via imported function...")
-            task_id_or_error = execute_omnifocus_applescript(applescript_command)
-        else:
-            print("Attempting to execute AppleScript via direct 'osascript' call (using temp file)...")
-            tmp_file_path = None
-            try:
-                # Create a temporary file to hold the script
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
-                    tmp_script_file.write(applescript_command)
-                    tmp_file_path = tmp_script_file.name
-                
-                process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
-                
-                if process.returncode == 0:
-                    task_id_or_error = process.stdout.strip()
-                else:
-                    task_id_or_error = f"Error: osascript failed with temp file. STDERR: {process.stderr.strip()}"
-            finally:
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path) # Clean up the temporary file
-        
+        print("Attempting to execute AppleScript via unified helper…")
+        task_id_or_error = execute_omnifocus_applescript(applescript_command)
         if task_id_or_error.startswith("Error:"):
             print(f"Failed to create task: {task_id_or_error}")
         else:
@@ -235,7 +218,6 @@ def handle_add_detailed_task(args):
             print("\nIMPORTANT: OmniFocus data has been changed.")
             print("If this was a recurring task, you might need to re-export your OmniFocus data")
             print("to see all instances if your export method includes future recurring items.")
-
     except Exception as e:
         print(f"An unexpected error occurred during AppleScript execution: {e}")
 
@@ -270,11 +252,19 @@ def generate_create_project_applescript(project_title: str, folder_name: Optiona
     ])
     return "\n".join(script_parts)
 
-def handle_create_project(args):
-    """Handles creation of a new project."""
-    project_title = args.title
-    folder_name = args.folder_name
+def handle_create_project(*, title: Optional[str] = None, folder_name: Optional[str] = None, args=None):
+    """Handles creation of a new project. Accepts either explicit keyword params or an args namespace."""
+    if args is not None:
+        project_title = getattr(args, 'title', None)
+        folder_name = getattr(args, 'folder_name', None)
+    else:
+        project_title = title
+    
+    if not project_title:
+        print("Error: Project title must be provided.")
+        return
 
+    # Re-use existing logic
     applescript_command = generate_create_project_applescript(project_title, folder_name)
 
     print("\nGenerated AppleScript for create-project (for review):")
@@ -282,44 +272,34 @@ def handle_create_project(args):
     print(applescript_command)
     print("------------------------------------\n")
 
-    execute_omnifocus_applescript = None
     try:
-        from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+        from omnifocus_api.apple_script_client import execute_omnifocus_applescript as _exec
     except ImportError:
-        print("Info: Could not import 'execute_omnifocus_applescript'. Using direct 'osascript' call.")
+        _exec = None
 
     try:
-        if execute_omnifocus_applescript:
-            print("Attempting to execute AppleScript via imported function...")
-            item_id_or_error = execute_omnifocus_applescript(applescript_command)
+        if _exec:
+            print("Attempting to execute AppleScript via unified helper…")
+            item_id_or_error = _exec(applescript_command)
         else:
-            print("Attempting to execute AppleScript via direct 'osascript' call (using temp file)...")
+            print("execute_omnifocus_applescript not available; falling back to osascript …")
+            import subprocess, tempfile, os
             tmp_file_path = None
             try:
-                # Create a temporary file to hold the script
-                # delete=False is important so we can pass the name to subprocess
                 with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.applescript') as tmp_script_file:
                     tmp_script_file.write(applescript_command)
                     tmp_file_path = tmp_script_file.name
-                
-                # Ensure the file is closed before osascript tries to read it.
-                # The 'with' statement handles this automatically on exit from the block.
                 process = subprocess.run(["osascript", tmp_file_path], capture_output=True, text=True, check=False)
-                
-                if process.returncode == 0:
-                    item_id_or_error = process.stdout.strip()
-                else:
-                    item_id_or_error = f"Error: osascript failed with temp file. STDERR: {process.stderr.strip()}"
+                item_id_or_error = process.stdout.strip() if process.returncode == 0 else f"Error: osascript failure: {process.stderr.strip()}"
             finally:
                 if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path) # Clean up the temporary file
-        
-        if item_id_or_error.startswith("Error:"):
+                    os.remove(tmp_file_path)
+
+        if str(item_id_or_error).startswith("Error"):
             print(f"Failed to create project: {item_id_or_error}")
         else:
             print(f"Project '{project_title}' created successfully with ID: {item_id_or_error}.")
             print("\nIMPORTANT: OmniFocus data has been changed. Re-export if needed for JSON queries.")
-
     except Exception as e:
         print(f"An unexpected error occurred during AppleScript execution: {e}")
 
