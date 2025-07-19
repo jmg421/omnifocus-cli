@@ -36,13 +36,19 @@ def get_latest_json_export_path():
         from utils.ensure_export import ensure_fresh_export
         return ensure_fresh_export(int(os.getenv("OF_EXPORT_MAX_AGE", "1800")))
     except Exception as e:
-        # Fallback to previous heuristic if helper fails
-        files = glob.glob('data/omnifocus_export_*.json')
-        if not files:
-            print(f"Warning: ensure_fresh_export failed ({e}) and no legacy export found.", file=sys.stderr)
+        # First try data/exports directory
+        export_files = glob.glob('data/exports/*/*/omnifocus-export-*.json')
+        if export_files:
+            export_files.sort(key=os.path.getmtime, reverse=True)
+            return export_files[0]
+        
+        # Fallback to Desktop directory if no exports in data/exports
+        desktop_files = glob.glob(os.path.expanduser('~/Desktop/omnifocus-export-*.json'))
+        if not desktop_files:
+            print(f"Warning: ensure_fresh_export failed ({e}) and no export found.", file=sys.stderr)
             return None
-        files.sort(key=os.path.getmtime, reverse=True)
-        return files[0]
+        desktop_files.sort(key=os.path.getmtime, reverse=True)
+        return desktop_files[0]
 
 # Load environment variables
 load_env_vars()
@@ -691,7 +697,7 @@ def delete_task_command(
 def query_command(
     query: str = typer.Argument("", help="Task ID or search string to look up in task names/notes. If blank, lists all tasks."),
     json_file: str = typer.Option(
-        get_latest_json_export_path(),
+        None,
         "--file",
         help="Path to the OmniFocus JSON or CSV export file.",
     ),
@@ -729,12 +735,12 @@ def query_command(
     If the query matches a Task/Project/Folder ID, returns that item. Otherwise, does a substring search in names/notes.
     """
     if not json_file:
-        default_json_path = 'data/omnifocus_export_202505180731am.json'
-        if os.path.exists(default_json_path) and input_format.lower() == 'json':
-            print(f"Warning: --file not specified, using default JSON path: {default_json_path}", file=sys.stderr)
-            json_file = default_json_path
+        # Try to get the latest export path
+        latest_path = get_latest_json_export_path()
+        if latest_path and os.path.exists(latest_path):
+            json_file = latest_path
         else:
-            print("Error: --file option is required.", file=sys.stderr)
+            print("Error: No OmniFocus export file found. Run 'ofcli.py ingest' to create one.", file=sys.stderr)
             raise typer.Exit(code=1)
 
     if input_format.lower() == "csv":
@@ -1849,7 +1855,7 @@ def ingest_command(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress subprocess output"),
 ):
     """Ensure fresh export, archive it, and update the SQLite DB."""
-    script_path = Path(__file__).resolve().parent.parent / "scripts" / "ingest_export.py"
+    script_path = Path(__file__).resolve().parent.parent / "tools" / "scripts" / "ingest_export.py"
     cmd = ["python3", str(script_path), "--age", str(age)]
     if quiet:
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -1874,7 +1880,7 @@ def next_actions_command(
     """Show a focused list of Available / Next tasks from the SQLite database."""
 
     # Ensure DB is up to date
-    script_path = Path(__file__).resolve().parent.parent / "scripts" / "ingest_export.py"
+    script_path = Path(__file__).resolve().parent.parent / "tools" / "scripts" / "ingest_export.py"
     subprocess.run(["python3", str(script_path), "--age", "900"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     db_path = Path("data/omnifocus.sqlite")
@@ -1929,7 +1935,7 @@ def dashboard_command(
     open_browser: bool = typer.Option(False, "--open", "-o", help="Open HTML dashboard in browser."),
 ):
     """Generate today's Markdown + HTML dashboard report."""
-    script_path = Path(__file__).resolve().parent.parent / "scripts" / "generate_dashboard.py"
+    script_path = Path(__file__).resolve().parent.parent / "tools" / "scripts" / "generate_dashboard.py"
     cmd = ["python3", str(script_path)]
     if open_browser:
         cmd.append("--open")
@@ -2166,6 +2172,864 @@ def calendar_conflicts(
         'end_time': end_time
     })
     handle_eventkit_calendar_conflicts(args)
+
+# === Bulk Operations ===
+
+@app.command("bulk-complete")
+def bulk_complete_command(
+    task_ids: List[str] = typer.Argument(..., help="List of task IDs to complete."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be completed without making changes."),
+    force: bool = typer.Option(False, "--force", help="Complete without confirmation prompt."),
+):
+    """Complete multiple tasks in bulk."""
+    if not task_ids:
+        print("No task IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to complete {len(task_ids)} tasks:")
+        for task_id in task_ids:
+            print(f"  - {task_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import complete_task
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for task_id in task_ids:
+        try:
+            if not dry_run:
+                if complete_task(task_id):
+                    success_count += 1
+                    print(f"✅ Completed task: {task_id}")
+                else:
+                    failed_tasks.append(task_id)
+                    print(f"❌ Failed to complete task: {task_id}")
+            else:
+                print(f"📋 Would complete task: {task_id}")
+                success_count += 1
+        except Exception as e:
+            failed_tasks.append(task_id)
+            print(f"❌ Error completing task {task_id}: {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'completed' if not dry_run else 'would be completed'}")
+    if failed_tasks:
+        print(f"Failed tasks: {', '.join(failed_tasks)}")
+
+@app.command("bulk-flag")
+def bulk_flag_command(
+    task_ids: List[str] = typer.Argument(..., help="List of task IDs to flag."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be flagged without making changes."),
+    force: bool = typer.Option(False, "--force", help="Flag without confirmation prompt."),
+):
+    """Flag multiple tasks in bulk."""
+    if not task_ids:
+        print("No task IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to flag {len(task_ids)} tasks:")
+        for task_id in task_ids:
+            print(f"  - {task_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for task_id in task_ids:
+        try:
+            if not dry_run:
+                script = f'''
+tell application "OmniFocus"
+    tell default document
+        set targetTask to first flattened task whose id is "{task_id}"
+        set flagged of targetTask to true
+    end tell
+end tell
+'''
+                execute_omnifocus_applescript(script)
+                success_count += 1
+                print(f"✅ Flagged task: {task_id}")
+            else:
+                print(f"📋 Would flag task: {task_id}")
+                success_count += 1
+        except Exception as e:
+            failed_tasks.append(task_id)
+            print(f"❌ Error flagging task {task_id}: {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'flagged' if not dry_run else 'would be flagged'}")
+    if failed_tasks:
+        print(f"Failed tasks: {', '.join(failed_tasks)}")
+
+@app.command("bulk-unflag")
+def bulk_unflag_command(
+    task_ids: List[str] = typer.Argument(..., help="List of task IDs to unflag."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be unflagged without making changes."),
+    force: bool = typer.Option(False, "--force", help="Unflag without confirmation prompt."),
+):
+    """Unflag multiple tasks in bulk."""
+    if not task_ids:
+        print("No task IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to unflag {len(task_ids)} tasks:")
+        for task_id in task_ids:
+            print(f"  - {task_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import unflag_task
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for task_id in task_ids:
+        try:
+            if not dry_run:
+                if unflag_task(task_id):
+                    success_count += 1
+                    print(f"✅ Unflagged task: {task_id}")
+                else:
+                    failed_tasks.append(task_id)
+                    print(f"❌ Failed to unflag task: {task_id}")
+            else:
+                print(f"📋 Would unflag task: {task_id}")
+                success_count += 1
+        except Exception as e:
+            failed_tasks.append(task_id)
+            print(f"❌ Error unflagging task {task_id}: {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'unflagged' if not dry_run else 'would be unflagged'}")
+    if failed_tasks:
+        print(f"Failed tasks: {', '.join(failed_tasks)}")
+
+@app.command("bulk-move")
+def bulk_move_command(
+    task_ids: List[str] = typer.Argument(..., help="List of task IDs to move."),
+    project_name: str = typer.Option(..., "--project", "-p", help="Name of the project to move tasks to."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be moved without making changes."),
+    force: bool = typer.Option(False, "--force", help="Move without confirmation prompt."),
+):
+    """Move multiple tasks to a project in bulk."""
+    if not task_ids:
+        print("No task IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to move {len(task_ids)} tasks to project '{project_name}':")
+        for task_id in task_ids:
+            print(f"  - {task_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import move_task_to_project
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for task_id in task_ids:
+        try:
+            if not dry_run:
+                if move_task_to_project(task_id, project_name):
+                    success_count += 1
+                    print(f"✅ Moved task {task_id} to project '{project_name}'")
+                else:
+                    failed_tasks.append(task_id)
+                    print(f"❌ Failed to move task {task_id} to project '{project_name}'")
+            else:
+                print(f"📋 Would move task {task_id} to project '{project_name}'")
+                success_count += 1
+        except Exception as e:
+            failed_tasks.append(task_id)
+            print(f"❌ Error moving task {task_id}: {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'moved' if not dry_run else 'would be moved'} to project '{project_name}'")
+    if failed_tasks:
+        print(f"Failed tasks: {', '.join(failed_tasks)}")
+
+@app.command("bulk-set-due")
+def bulk_set_due_command(
+    task_ids: List[str] = typer.Argument(..., help="List of task IDs to set due date for."),
+    due_date: str = typer.Option(..., "--due", "-d", help="Due date (YYYY-MM-DD or natural language)."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be updated without making changes."),
+    force: bool = typer.Option(False, "--force", help="Update without confirmation prompt."),
+):
+    """Set due date for multiple tasks in bulk."""
+    if not task_ids:
+        print("No task IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to set due date '{due_date}' for {len(task_ids)} tasks:")
+        for task_id in task_ids:
+            print(f"  - {task_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import set_task_due_date
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for task_id in task_ids:
+        try:
+            if not dry_run:
+                if set_task_due_date(task_id, due_date):
+                    success_count += 1
+                    print(f"✅ Set due date '{due_date}' for task: {task_id}")
+                else:
+                    failed_tasks.append(task_id)
+                    print(f"❌ Failed to set due date for task: {task_id}")
+            else:
+                print(f"📋 Would set due date '{due_date}' for task: {task_id}")
+                success_count += 1
+        except Exception as e:
+            failed_tasks.append(task_id)
+            print(f"❌ Error setting due date for task {task_id}: {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'updated' if not dry_run else 'would be updated'} with due date '{due_date}'")
+    if failed_tasks:
+        print(f"Failed tasks: {', '.join(failed_tasks)}")
+
+@app.command("bulk-set-defer")
+def bulk_set_defer_command(
+    task_ids: List[str] = typer.Argument(..., help="List of task IDs to set defer date for."),
+    defer_date: str = typer.Option(..., "--defer", "-d", help="Defer date (YYYY-MM-DD or natural language)."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be updated without making changes."),
+    force: bool = typer.Option(False, "--force", help="Update without confirmation prompt."),
+):
+    """Set defer date for multiple tasks in bulk."""
+    if not task_ids:
+        print("No task IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to set defer date '{defer_date}' for {len(task_ids)} tasks:")
+        for task_id in task_ids:
+            print(f"  - {task_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import set_task_defer_date
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for task_id in task_ids:
+        try:
+            if not dry_run:
+                if set_task_defer_date(task_id, defer_date):
+                    success_count += 1
+                    print(f"✅ Set defer date '{defer_date}' for task: {task_id}")
+                else:
+                    failed_tasks.append(task_id)
+                    print(f"❌ Failed to set defer date for task: {task_id}")
+            else:
+                print(f"📋 Would set defer date '{defer_date}' for task: {task_id}")
+                success_count += 1
+        except Exception as e:
+            failed_tasks.append(task_id)
+            print(f"❌ Error setting defer date for task {task_id}: {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'updated' if not dry_run else 'would be updated'} with defer date '{defer_date}'")
+    if failed_tasks:
+        print(f"Failed tasks: {', '.join(failed_tasks)}")
+
+@app.command("bulk-project-status")
+def bulk_project_status_command(
+    project_ids: List[str] = typer.Argument(..., help="List of project IDs to change status for."),
+    status: str = typer.Option(..., "--status", "-s", help="New status (Active, OnHold, Dropped, Done)."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be updated without making changes."),
+    force: bool = typer.Option(False, "--force", help="Update without confirmation prompt."),
+):
+    """Change status for multiple projects in bulk."""
+    if not project_ids:
+        print("No project IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    valid_statuses = ["Active", "OnHold", "Dropped", "Done"]
+    if status not in valid_statuses:
+        print(f"Invalid status '{status}'. Valid statuses: {', '.join(valid_statuses)}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to set status '{status}' for {len(project_ids)} projects:")
+        for project_id in project_ids:
+            print(f"  - {project_id}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+    
+    success_count = 0
+    failed_projects = []
+    
+    for project_id in project_ids:
+        try:
+            if not dry_run:
+                script = f'''
+tell application "OmniFocus"
+    tell default document
+        set targetProject to first flattened project whose id is "{project_id}"
+        set status of targetProject to status "{status}"
+    end tell
+end tell
+'''
+                execute_omnifocus_applescript(script)
+                success_count += 1
+                print(f"✅ Set status '{status}' for project: {project_id}")
+            else:
+                print(f"📋 Would set status '{status}' for project: {project_id}")
+                success_count += 1
+        except Exception as e:
+            failed_projects.append(project_id)
+            print(f"❌ Error setting status for project {project_id}: {e}")
+    
+    print(f"\nSummary: {success_count} projects {'updated' if not dry_run else 'would be updated'} with status '{status}'")
+    if failed_projects:
+        print(f"Failed projects: {', '.join(failed_projects)}")
+
+@app.command("bulk-delete")
+def bulk_delete_command(
+    item_ids: List[str] = typer.Argument(..., help="List of task or project IDs to delete."),
+    item_type: str = typer.Option("tasks", "--type", "-t", help="Type of items to delete (tasks or projects)."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be deleted without making changes."),
+    force: bool = typer.Option(False, "--force", help="Delete without confirmation prompt."),
+):
+    """Delete multiple tasks or projects in bulk."""
+    if not item_ids:
+        print("No item IDs provided.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if item_type not in ["tasks", "projects"]:
+        print("Invalid item type. Must be 'tasks' or 'projects'.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to delete {len(item_ids)} {item_type}:")
+        for item_id in item_ids:
+            print(f"  - {item_id}")
+        if not typer.confirm("This action cannot be undone. Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import delete_task, execute_omnifocus_applescript
+    
+    success_count = 0
+    failed_items = []
+    
+    for item_id in item_ids:
+        try:
+            if not dry_run:
+                if item_type == "tasks":
+                    if delete_task(item_id):
+                        success_count += 1
+                        print(f"✅ Deleted task: {item_id}")
+                    else:
+                        failed_items.append(item_id)
+                        print(f"❌ Failed to delete task: {item_id}")
+                else:  # projects
+                    script = f'''
+tell application "OmniFocus"
+    tell default document
+        set targetProject to first flattened project whose id is "{item_id}"
+        delete targetProject
+    end tell
+end tell
+'''
+                    execute_omnifocus_applescript(script)
+                    success_count += 1
+                    print(f"✅ Deleted project: {item_id}")
+            else:
+                print(f"📋 Would delete {item_type[:-1]}: {item_id}")
+                success_count += 1
+        except Exception as e:
+            failed_items.append(item_id)
+            print(f"❌ Error deleting {item_type[:-1]} {item_id}: {e}")
+    
+    print(f"\nSummary: {success_count} {item_type} {'deleted' if not dry_run else 'would be deleted'}")
+    if failed_items:
+        print(f"Failed {item_type}: {', '.join(failed_items)}")
+
+# === End Bulk Operations ===
+
+@app.command("get-task-ids")
+def get_task_ids_command(
+    query: str = typer.Argument("", help="Search string to find tasks. If blank, returns all task IDs."),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Filter to a specific project."),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status (Active, Completed, etc.)."),
+    flagged_only: bool = typer.Option(False, "--flagged-only", "-f", help="Show only flagged tasks."),
+    due_before: Optional[str] = typer.Option(None, "--due-before", help="Filter by due date before YYYY-MM-DD."),
+    due_after: Optional[str] = typer.Option(None, "--due-after", help="Filter by due date after YYYY-MM-DD."),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON instead of plain text."),
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file."),
+):
+    """Get task IDs from a query. Useful for bulk operations."""
+    if not file:
+        print("No export file available. Run 'ofcli ingest' first.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    try:
+        prepared_data = load_and_prepare_omnifocus_data(file)
+        if not prepared_data:
+            print("Failed to load data from export file.", file=sys.stderr)
+            raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error loading data: {e}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    # Build filters
+    filters = {}
+    if project:
+        # Find project by name
+        project_id = None
+        for pid, pdata in prepared_data.get("projects_map", {}).items():
+            if pdata.get("name", "").lower() == project.lower():
+                project_id = pid
+                break
+        if project_id:
+            filters["project_id_filter"] = project_id
+        else:
+            print(f"Project '{project}' not found.", file=sys.stderr)
+            raise typer.Exit(code=1)
+    
+    if status:
+        filters["status_filter"] = status
+    
+    if flagged_only:
+        # Filter for flagged tasks
+        tasks = [t for t in prepared_data.get("all_tasks", []) if t.get("flagged", False)]
+    else:
+        # Use query_prepared_data
+        tasks = query_prepared_data(
+            prepared_data,
+            "tasks",
+            name_filter=query if query else None,
+            **filters
+        )
+    
+    # Apply date filters if specified
+    if due_before:
+        due_before_date = parse_cli_date(due_before)
+        if due_before_date:
+            tasks = [t for t in tasks if get_item_date(t.get("dueDate")) and get_item_date(t.get("dueDate")) < due_before_date]
+    
+    if due_after:
+        due_after_date = parse_cli_date(due_after)
+        if due_after_date:
+            tasks = [t for t in tasks if get_item_date(t.get("dueDate")) and get_item_date(t.get("dueDate")) > due_after_date]
+    
+    if json_output:
+        # Output as JSON with task details
+        result = []
+        for task in tasks:
+            result.append({
+                "id": task.get("id"),
+                "name": task.get("name"),
+                "project": prepared_data.get("projects_map", {}).get(task.get("projectId"), {}).get("name", "No Project"),
+                "status": task.get("status"),
+                "flagged": task.get("flagged", False),
+                "dueDate": task.get("dueDate"),
+                "deferDate": task.get("deferDate"),
+                "completed": task.get("completed", False)
+            })
+        print(json.dumps(result, indent=2))
+    else:
+        # Output just the IDs, one per line
+        task_ids = [task.get("id") for task in tasks if task.get("id")]
+        for task_id in task_ids:
+            print(task_id)
+        
+        if task_ids:
+            print(f"\nFound {len(task_ids)} tasks", file=sys.stderr)
+        else:
+            print("No tasks found matching the criteria.", file=sys.stderr)
+
+@app.command("get-project-ids")
+def get_project_ids_command(
+    query: str = typer.Argument("", help="Search string to find projects. If blank, returns all project IDs."),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status (Active, OnHold, etc.)."),
+    folder: Optional[str] = typer.Option(None, "--folder", "-f", help="Filter to a specific folder."),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON instead of plain text."),
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file."),
+):
+    """Get project IDs from a query. Useful for bulk operations."""
+    if not file:
+        print("No export file available. Run 'ofcli ingest' first.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    try:
+        prepared_data = load_and_prepare_omnifocus_data(file)
+        if not prepared_data:
+            print("Failed to load data from export file.", file=sys.stderr)
+            raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error loading data: {e}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    # Build filters
+    filters = {}
+    if status:
+        filters["status_filter"] = status
+    
+    if folder:
+        # Find folder by name
+        folder_id = None
+        for fid, fdata in prepared_data.get("folders_map", {}).items():
+            if fdata.get("name", "").lower() == folder.lower():
+                folder_id = fid
+                break
+        if folder_id:
+            filters["folder_id_filter"] = folder_id
+        else:
+            print(f"Folder '{folder}' not found.", file=sys.stderr)
+            raise typer.Exit(code=1)
+    
+    # Use query_prepared_data
+    projects = query_prepared_data(
+        prepared_data,
+        "projects",
+        name_filter=query if query else None,
+        **filters
+    )
+    
+    if json_output:
+        # Output as JSON with project details
+        result = []
+        for project in projects:
+            result.append({
+                "id": project.get("id"),
+                "name": project.get("name"),
+                "status": project.get("status"),
+                "folder": prepared_data.get("folders_map", {}).get(project.get("folderId"), {}).get("name", "No Folder"),
+                "completed": project.get("completed", False),
+                "dueDate": project.get("dueDate"),
+                "deferDate": project.get("deferDate")
+            })
+        print(json.dumps(result, indent=2))
+    else:
+        # Output just the IDs, one per line
+        project_ids = [project.get("id") for project in projects if project.get("id")]
+        for project_id in project_ids:
+            print(project_id)
+        
+        if project_ids:
+            print(f"\nFound {len(project_ids)} projects", file=sys.stderr)
+        else:
+            print("No projects found matching the criteria.", file=sys.stderr)
+
+@app.command("bulk-create")
+def bulk_create_command(
+    input_file: str = typer.Option(..., "--input", "-i", help="Path to JSON file containing tasks to create."),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Default project for all tasks (overrides individual task project)."),
+    folder: Optional[str] = typer.Option(None, "--folder", "-f", help="Default folder for all tasks (overrides individual task folder)."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be created without making changes."),
+    force: bool = typer.Option(False, "--force", help="Create without confirmation prompt."),
+):
+    """Create multiple tasks in bulk from a JSON file."""
+    if not os.path.exists(input_file):
+        print(f"Input file not found: {input_file}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    try:
+        with open(input_file, 'r') as f:
+            tasks_data = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON in input file: {e}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error reading input file: {e}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not isinstance(tasks_data, list):
+        print("Input file must contain a JSON array of tasks.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not tasks_data:
+        print("No tasks found in input file.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    # Validate task data
+    valid_tasks = []
+    invalid_tasks = []
+    
+    for i, task in enumerate(tasks_data):
+        if not isinstance(task, dict):
+            invalid_tasks.append(f"Task {i}: Not a dictionary")
+            continue
+        
+        if not task.get("title") and not task.get("name"):
+            invalid_tasks.append(f"Task {i}: Missing title/name")
+            continue
+        
+        # Normalize task data
+        normalized_task = {
+            "title": task.get("title") or task.get("name"),
+            "note": task.get("note") or task.get("notes", ""),
+            "project": task.get("project") or project,
+            "folder": task.get("folder") or folder,
+            "due_date": task.get("due_date") or task.get("due") or task.get("dueDate"),
+            "defer_date": task.get("defer_date") or task.get("defer") or task.get("deferDate"),
+            "duration": task.get("duration") or task.get("estimatedMinutes"),
+            "tags": task.get("tags", ""),
+            "recurrence": task.get("recurrence") or task.get("recurrence_rule")
+        }
+        
+        valid_tasks.append(normalized_task)
+    
+    if invalid_tasks:
+        print("Invalid tasks found:", file=sys.stderr)
+        for error in invalid_tasks:
+            print(f"  - {error}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to create {len(valid_tasks)} tasks:")
+        for task in valid_tasks:
+            project_info = f" in project '{task['project']}'" if task['project'] else ""
+            folder_info = f" in folder '{task['folder']}'" if task['folder'] else ""
+            print(f"  - {task['title']}{project_info}{folder_info}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for i, task in enumerate(valid_tasks):
+        try:
+            if not dry_run:
+                # Build AppleScript for task creation
+                script_parts = [
+                    'tell application "OmniFocus"',
+                    '    tell default document',
+                    '        set newTask to make new inbox task with properties {name:"' + task['title'].replace('"', '\\"') + '"}'
+                ]
+                
+                # Add note if provided
+                if task['note']:
+                    script_parts.append('        set note of newTask to "' + task['note'].replace('"', '\\"').replace('\n', '\\n') + '"')
+                
+                # Add due date if provided
+                if task['due_date']:
+                    script_parts.append('        set due date of newTask to date "' + task['due_date'] + '"')
+                
+                # Add defer date if provided
+                if task['defer_date']:
+                    script_parts.append('        set defer date of newTask to date "' + task['defer_date'] + '"')
+                
+                # Add estimated duration if provided
+                if task['duration']:
+                    script_parts.append('        set estimated minutes of newTask to ' + str(task['duration']))
+                
+                # Add recurrence if provided
+                if task['recurrence']:
+                    script_parts.append('        set repetition of newTask to repetition rule "' + task['recurrence'] + '"')
+                
+                # Move to project if specified
+                if task['project']:
+                    script_parts.extend([
+                        '        set targetProject to first flattened project whose name is "' + task['project'].replace('"', '\\"') + '"',
+                        '        if targetProject is not missing value then',
+                        '            move newTask to targetProject',
+                        '        end if'
+                    ])
+                
+                # Move to folder if specified (and no project)
+                elif task['folder']:
+                    script_parts.extend([
+                        '        set targetFolder to first flattened folder whose name is "' + task['folder'].replace('"', '\\"') + '"',
+                        '        if targetFolder is not missing value then',
+                        '            set newProject to make new project with properties {name:"' + task['title'].replace('"', '\\"') + '"}',
+                        '            move newProject to targetFolder',
+                        '            move newTask to newProject',
+                        '        end if'
+                    ])
+                
+                script_parts.extend([
+                    '        return id of newTask',
+                    '    end tell',
+                    'end tell'
+                ])
+                
+                script = '\n'.join(script_parts)
+                result = execute_omnifocus_applescript(script)
+                
+                success_count += 1
+                print(f"✅ Created task: {task['title']} (ID: {result.strip()})")
+            else:
+                print(f"📋 Would create task: {task['title']}")
+                success_count += 1
+                
+        except Exception as e:
+            failed_tasks.append(f"{task['title']}: {str(e)}")
+            print(f"❌ Error creating task '{task['title']}': {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'created' if not dry_run else 'would be created'}")
+    if failed_tasks:
+        print(f"Failed tasks:")
+        for failed in failed_tasks:
+            print(f"  - {failed}")
+
+@app.command("bulk-create-from-csv")
+def bulk_create_from_csv_command(
+    input_file: str = typer.Option(..., "--input", "-i", help="Path to CSV file containing tasks to create."),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Default project for all tasks."),
+    folder: Optional[str] = typer.Option(None, "--folder", "-f", help="Default folder for all tasks."),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be created without making changes."),
+    force: bool = typer.Option(False, "--force", help="Create without confirmation prompt."),
+):
+    """Create multiple tasks in bulk from a CSV file."""
+    if not os.path.exists(input_file):
+        print(f"Input file not found: {input_file}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    try:
+        import csv
+        with open(input_file, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            tasks_data = list(reader)
+    except Exception as e:
+        print(f"Error reading CSV file: {e}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not tasks_data:
+        print("No tasks found in CSV file.", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    # Convert CSV data to the same format as JSON
+    valid_tasks = []
+    invalid_tasks = []
+    
+    for i, task in enumerate(tasks_data):
+        # Check for required fields
+        title = task.get("title") or task.get("name") or task.get("Title") or task.get("Name")
+        if not title:
+            invalid_tasks.append(f"Row {i+1}: Missing title/name")
+            continue
+        
+        # Normalize task data
+        normalized_task = {
+            "title": title,
+            "note": task.get("note") or task.get("notes") or task.get("Note") or task.get("Notes", ""),
+            "project": task.get("project") or task.get("Project") or project,
+            "folder": task.get("folder") or task.get("Folder") or folder,
+            "due_date": task.get("due_date") or task.get("due") or task.get("Due") or task.get("dueDate") or task.get("DueDate"),
+            "defer_date": task.get("defer_date") or task.get("defer") or task.get("Defer") or task.get("deferDate") or task.get("DeferDate"),
+            "duration": task.get("duration") or task.get("Duration") or task.get("estimatedMinutes"),
+            "tags": task.get("tags") or task.get("Tags", ""),
+            "recurrence": task.get("recurrence") or task.get("Recurrence") or task.get("recurrence_rule")
+        }
+        
+        valid_tasks.append(normalized_task)
+    
+    if invalid_tasks:
+        print("Invalid tasks found:", file=sys.stderr)
+        for error in invalid_tasks:
+            print(f"  - {error}", file=sys.stderr)
+        raise typer.Exit(code=1)
+    
+    if not force and not dry_run:
+        print(f"About to create {len(valid_tasks)} tasks from CSV:")
+        for task in valid_tasks:
+            project_info = f" in project '{task['project']}'" if task['project'] else ""
+            folder_info = f" in folder '{task['folder']}'" if task['folder'] else ""
+            print(f"  - {task['title']}{project_info}{folder_info}")
+        if not typer.confirm("Continue?"):
+            raise typer.Exit()
+    
+    from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+    
+    success_count = 0
+    failed_tasks = []
+    
+    for i, task in enumerate(valid_tasks):
+        try:
+            if not dry_run:
+                # Build AppleScript for task creation (same as JSON version)
+                script_parts = [
+                    'tell application "OmniFocus"',
+                    '    tell default document',
+                    '        set newTask to make new inbox task with properties {name:"' + task['title'].replace('"', '\\"') + '"}'
+                ]
+                
+                # Add note if provided
+                if task['note']:
+                    script_parts.append('        set note of newTask to "' + task['note'].replace('"', '\\"').replace('\n', '\\n') + '"')
+                
+                # Add due date if provided
+                if task['due_date']:
+                    script_parts.append('        set due date of newTask to date "' + task['due_date'] + '"')
+                
+                # Add defer date if provided
+                if task['defer_date']:
+                    script_parts.append('        set defer date of newTask to date "' + task['defer_date'] + '"')
+                
+                # Add estimated duration if provided
+                if task['duration']:
+                    script_parts.append('        set estimated minutes of newTask to ' + str(task['duration']))
+                
+                # Add recurrence if provided
+                if task['recurrence']:
+                    script_parts.append('        set repetition of newTask to repetition rule "' + task['recurrence'] + '"')
+                
+                # Move to project if specified
+                if task['project']:
+                    script_parts.extend([
+                        '        set targetProject to first flattened project whose name is "' + task['project'].replace('"', '\\"') + '"',
+                        '        if targetProject is not missing value then',
+                        '            move newTask to targetProject',
+                        '        end if'
+                    ])
+                
+                # Move to folder if specified (and no project)
+                elif task['folder']:
+                    script_parts.extend([
+                        '        set targetFolder to first flattened folder whose name is "' + task['folder'].replace('"', '\\"') + '"',
+                        '        if targetFolder is not missing value then',
+                        '            set newProject to make new project with properties {name:"' + task['title'].replace('"', '\\"') + '"}',
+                        '            move newProject to targetFolder',
+                        '            move newTask to newProject',
+                        '        end if'
+                    ])
+                
+                script_parts.extend([
+                    '        return id of newTask',
+                    '    end tell',
+                    'end tell'
+                ])
+                
+                script = '\n'.join(script_parts)
+                result = execute_omnifocus_applescript(script)
+                
+                success_count += 1
+                print(f"✅ Created task: {task['title']} (ID: {result.strip()})")
+            else:
+                print(f"📋 Would create task: {task['title']}")
+                success_count += 1
+                
+        except Exception as e:
+            failed_tasks.append(f"{task['title']}: {str(e)}")
+            print(f"❌ Error creating task '{task['title']}': {e}")
+    
+    print(f"\nSummary: {success_count} tasks {'created' if not dry_run else 'would be created'} from CSV")
+    if failed_tasks:
+        print(f"Failed tasks:")
+        for failed in failed_tasks:
+            print(f"  - {failed}")
+
+@app.command("clear-cache")
+def clear_cache_command():
+    """Clear the export cache and force a fresh export on next command."""
+    from utils.ensure_export import clear_export_cache
+    clear_export_cache()
+    print("✅ Export cache cleared. Next command will trigger a fresh export if needed.")
 
 if __name__ == "__main__":
     app() 

@@ -32,7 +32,7 @@ class IcalBuddyIntegration:
         self.family_calendars = [
             "Family", "John", "Christina", "Grace", "Evan", "Weston",
             "UA Slammy Gold 14U", "Slammy Gold 14U", "Westerville Naturals 14U",
-            "Force Aquatics", "Sports"
+            "Force Aquatics", "Sports", "Christina Gmail"
         ]
     
     def check_icalbuddy_available(self) -> bool:
