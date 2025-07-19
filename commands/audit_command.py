@@ -3,14 +3,13 @@ import os
 import datetime
 import re
 from typing import List, Dict, Any, Tuple
-from omnifocus_api import apple_script_client
-from omnifocus_api.data_models import OmniFocusTask
-from ai_integration.openai_client import openai_completion
-from ai_integration.anthropic_client import anthropic_completion
-from ai_integration.utils.format_utils import format_task_list
+from ..omnifocus_api import apple_script_client
+from ..omnifocus_api.data_models import OmniFocusTask
+from ..ai_integration.openai_client import openai_completion
+from ..ai_integration.anthropic_client import anthropic_completion
+from ..ai_integration.utils.format_utils import format_task_list
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+from ..utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 # Define categories for task classification
 CATEGORIES = {

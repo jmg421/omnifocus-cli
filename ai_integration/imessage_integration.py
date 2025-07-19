@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 import subprocess
 from dataclasses import dataclass
-from omnifocus_api.data_models import OmniFocusTask
+from ..omnifocus_api.data_models import OmniFocusTask
 
 @dataclass
 class Message:

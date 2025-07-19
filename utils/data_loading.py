@@ -14,10 +14,13 @@ except ImportError:
     from export_schema import ExportModel
 
 def get_latest_json_export_path():
-    # Look in ../data relative to omni-cli directory
-    data_dir = '../data'
+    # Look in local data directory first, then home Desktop
+    data_dir = 'data'
     if not os.path.exists(data_dir):
-        data_dir = 'data'  # Fallback to local data directory
+        # Check if we're in a package installation context
+        package_data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
+        if os.path.exists(package_data_dir):
+            data_dir = package_data_dir
     
     try:
         all_files = os.listdir(data_dir)

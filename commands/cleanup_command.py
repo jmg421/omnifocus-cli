@@ -3,19 +3,19 @@ import os
 import json
 from typing import List, Dict, Optional
 from enum import Enum
-from omnifocus_api.apple_script_client import (
+from ..omnifocus_api.apple_script_client import (
     fetch_inbox_tasks, fetch_flagged_tasks, fetch_overdue_tasks, 
     move_task_to_project, fetch_project_names, set_task_name, 
     set_task_note, complete_task, delete_task, unflag_task, fetch_subtasks,
     fetch_adjacent_tasks_context
 )
-from omnifocus_api.data_models import OmniFocusTask
+from ..omnifocus_api.data_models import OmniFocusTask
 from datetime import datetime, timedelta
-from ai_integration.utils.prompt_utils import confirm_action
+from ..ai_integration.utils.prompt_utils import confirm_action
 import re
 import difflib
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from ai_integration.llama3_ollama_client import query_llama3
+from ..ai_integration.llama3_ollama_client import query_llama3
 
 def get_user_input(prompt: str, valid_options: list) -> str:
     """Get user input with validation."""

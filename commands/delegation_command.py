@@ -1,7 +1,7 @@
-from omnifocus_api import apple_script_client
-from ai_integration.ai_utils import create_delegation_email_body
-from ai_integration.utils.config import get_config
-from ai_integration.utils.prompt_utils import confirm_action
+from ..omnifocus_api import apple_script_client
+from ..ai_integration.ai_utils import create_delegation_email_body
+from ..ai_integration.utils.config import get_config
+from ..ai_integration.utils.prompt_utils import confirm_action
 import smtplib
 
 def handle_delegation(args):
