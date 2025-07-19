@@ -3,8 +3,7 @@ from rich.console import Console
 from rich.table import Table
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+from ..utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 def handle_search(args):
     """

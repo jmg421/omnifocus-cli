@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
-from omnifocus_api import apple_script_client
-from omnifocus_api.data_models import OmniFocusTask
-from ai_integration.ical_integration import fetch_calendar_events, sync_with_calendar
+from ..omnifocus_api import apple_script_client
+from ..omnifocus_api.data_models import OmniFocusTask
+from ..ai_integration.ical_integration import fetch_calendar_events, sync_with_calendar
 import requests
 import icalendar
 import subprocess
@@ -10,8 +10,7 @@ import tempfile
 import os
 import json
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+from ..utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 # Attempt to import shared utilities, if they exist in a known shared location
 # If not, local_ versions will be used.

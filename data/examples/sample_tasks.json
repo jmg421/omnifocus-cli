@@ -1,0 +1,54 @@
+{
+  "tasks": [
+    {
+      "id": "example-task-1",
+      "name": "Review quarterly reports",
+      "project": "Work",
+      "context": "Computer",
+      "dueDate": "2024-03-15",
+      "completed": false,
+      "flagged": false,
+      "note": "Focus on revenue trends and expense analysis"
+    },
+    {
+      "id": "example-task-2", 
+      "name": "Plan team building event",
+      "project": "Management",
+      "context": "Planning",
+      "deferDate": "2024-03-01",
+      "completed": false,
+      "flagged": true,
+      "note": "Consider outdoor activities and budget constraints"
+    },
+    {
+      "id": "example-task-3",
+      "name": "Update project documentation",
+      "project": "Development", 
+      "context": "Computer",
+      "estimatedMinutes": 120,
+      "completed": false,
+      "flagged": false,
+      "note": "Include API changes and new feature descriptions"
+    }
+  ],
+  "projects": [
+    {
+      "id": "work-project",
+      "name": "Work",
+      "status": "active",
+      "folder": "Professional"
+    },
+    {
+      "id": "mgmt-project", 
+      "name": "Management",
+      "status": "active",
+      "folder": "Professional"
+    },
+    {
+      "id": "dev-project",
+      "name": "Development",
+      "status": "active", 
+      "folder": "Technical"
+    }
+  ]
+} 

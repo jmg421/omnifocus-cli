@@ -1,4 +1,4 @@
-from omnifocus_api.apple_script_client import execute_omnifocus_applescript
+from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript
 
 def generate_complete_task_applescript(task_id: str) -> str:
     """Generate AppleScript that marks the given task as completed."""

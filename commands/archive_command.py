@@ -4,8 +4,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.data_loading import load_and_prepare_omnifocus_data, get_latest_json_export_path
+from ..utils.data_loading import load_and_prepare_omnifocus_data, get_latest_json_export_path
 
 def ensure_archive_directory():
     """Ensure the reference_archive directory exists."""

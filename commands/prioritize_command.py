@@ -1,12 +1,11 @@
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+from ..utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 import typer
-from ai_integration import ai_utils
-from ai_integration.utils.format_utils import format_priority_recommendations
-from ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
+from ..ai_integration import ai_utils
+from ..ai_integration.utils.format_utils import format_priority_recommendations
+from ..ai_integration.utils.prompt_utils import get_prompt_template, save_prompt_template
 from datetime import datetime
 from typing import List, Optional
 

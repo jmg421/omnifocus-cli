@@ -1,6 +1,6 @@
 """Task-related operations for OmniFocus."""
 from typing import List, Optional
-from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified helper
+from .apple_script_client import execute_omnifocus_applescript  # Unified helper
 from .data_models import OmniFocusTask
 from .utils import escape_applescript_string
 
