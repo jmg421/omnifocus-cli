@@ -1,13 +1,12 @@
 import json
-from omnifocus_api import apple_script_client
-from ai_integration.utils.format_utils import format_task_list
+from ..omnifocus_api import apple_script_client
+from ..ai_integration.utils.format_utils import format_task_list
 import subprocess
 import tempfile
 import os
 from typing import Optional, List, Dict, Any
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+from ..utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 def handle_list(args):
     """

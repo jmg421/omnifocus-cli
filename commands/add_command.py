@@ -1,7 +1,15 @@
-from omnifocus_api import apple_script_client
-from ai_integration.utils.format_utils import parse_date_string
+try:
+    from ..omnifocus_api import apple_script_client
+    from ..ai_integration.utils.format_utils import parse_date_string
+except ImportError:
+    # Fallback for when running as script
+    from omnifocus_api import apple_script_client
+    from ai_integration.utils.format_utils import parse_date_string
 from typing import Optional, List
-from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
+try:
+    from ..omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
+except ImportError:
+    from omnifocus_api.apple_script_client import execute_omnifocus_applescript  # Unified runner helper
 import subprocess  # Still used elsewhere (e.g., legacy calls)
 import tempfile
 import os

@@ -1,213 +1,277 @@
 # OFCLI - OmniFocus Command Line Interface
 
-A powerful command-line interface for OmniFocus with AI integration and bidirectional Evernote sync for seamless context switching.
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/jmg421/omnifocus-cli)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://github.com/jmg421/omnifocus-cli)
+[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://github.com/jmg421/omnifocus-cli)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/jmg421/omnifocus-cli/blob/main/LICENSE)
 
-## Key Features (v0.2)
+A powerful, AI-enhanced command-line interface for OmniFocus with comprehensive Apple ecosystem integration. Transform your productivity workflow with intelligent task management, calendar integration, and seamless automation.
 
-* **Authoritative AppleScript export** – every CLI operation pulls a fresh JSON export from OmniFocus (via `ensure_fresh_export`) so you’re always working with up-to-date data.
-* **Schema-validated importer** – exports are validated with Pydantic models before processing; malformed data is rejected with clear error messages.
-* **SQLite ingest with change report** – `scripts/ingest_export.py` upserts projects/tasks and prints a summary of new / updated / possible-duplicate items.
-* Rich CLI:
-  * Add, list, complete, and delegate tasks & projects.
-  * AI-powered task prioritization.
-* **Evernote integration** (optional, legacy) – link tasks ⇄ notes for contextual reference.
+## 🚀 Key Features
 
-> ⚠️  CSV and Markdown importers are considered **legacy utilities**. They remain available behind the `--input-format csv` flag but are not the primary sync path.
+### Core Task Management
+- **Authoritative AppleScript Integration**: Direct, real-time communication with OmniFocus
+- **AI-Powered Task Prioritization**: Leverage OpenAI GPT-4 and Anthropic Claude for intelligent task ordering
+- **Intelligent Task Categorization**: Automated inbox cleanup with AI-driven project suggestions
+- **Batch Operations**: Efficiently manage multiple tasks and projects simultaneously
 
-## Requirements
+### Apple Ecosystem Integration
+- **EventKit Calendar Integration**: Native macOS calendar access without AppleScript timeouts
+- **icalBuddy Support**: Advanced calendar querying and conflict detection
+- **AppleScript Calendar Bridge**: Seamless integration with Apple Calendar events
+- **Messages Integration**: Extract action items from iMessage conversations
 
-- Python 3.9+
-- OmniFocus for Mac
-- API keys for OpenAI or Anthropic (for AI features)
-- Evernote account
+### Advanced Workflow Features
+- **Fresh Export Guarantee**: Always work with up-to-date OmniFocus data via automatic JSON exports
+- **Schema Validation**: Pydantic-based data validation ensures data integrity
+- **SQLite Integration**: Local database for advanced querying and reporting
+- **Evernote Sync**: Bidirectional task-note synchronization for context switching
 
-## Unified AppleScript Runner (experimental)
+### AI-Enhanced Capabilities
+- **Natural Language Processing**: Parse and understand complex task descriptions
+- **Context-Aware Delegation**: AI-generated delegation emails and task assignments
+- **Smart Scheduling**: Calendar-aware task scheduling with conflict detection
+- **Intelligent Cleanup**: Automated inbox organization with confidence scoring
 
-CLI commands that interact with OmniFocus now route through a central helper that decides **how** to run AppleScript:
+## 📋 Requirements
 
-* **Default**: uses the macOS `osascript` binary directly (unchanged behaviour).
-* **Opt-in experimental path**: set an environment variable to enable a unified runner script that writes the AppleScript to a temp file and executes it through `scripts/run_script.py`.  This isolates AppleScript execution, makes logging easier, and will eventually support sandboxed mocking in unit-tests.
+- **macOS 10.15+** (OmniFocus requirement)
+- **Python 3.9+**
+- **OmniFocus 3 for Mac**
+- **API Keys**: OpenAI and/or Anthropic for AI features
 
-Activate the new path per-invocation:
+## 🛠 Installation
 
+### Quick Install (Recommended)
 ```bash
-# any ofcli sub-command – example:
-OF_RUNNER_V2=1 python3 omni-cli/ofcli.py list-live-projects --json
+pip install ofcli
 ```
 
-The helper lives at `omnifocus_api/apple_script_client.execute_omnifocus_applescript`.  If you are writing new scripts or modifying existing ones, call this function instead of spawning `osascript` yourself.  It automatically honours the `OF_RUNNER_V2` flag.
-
-> Note: JavaScript for Automation (.omnijs) scripts are also supported; the runner adds the `-l JavaScript` flag when the file extension is `.omnijs`.
-
-## Installation
-
 ### From Source
-
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/omni-cli.git
-cd omni-cli
-
-# Install the package
+git clone https://github.com/jmg421/omnifocus-cli.git
+cd omnifocus-cli
 pip install -e .
 ```
 
-### Configuration
-
-Create a `.env` file in your home directory with your API keys:
-
+### Development Installation
+```bash
+git clone https://github.com/jmg421/omnifocus-cli.git
+cd omnifocus-cli
+pip install -e ".[dev]"
 ```
+
+## ⚙️ Configuration
+
+### 1. API Keys Setup
+Create a `.ofcli.env` file in your home directory:
+
+```bash
+# AI Services (at least one required)
 OPENAI_API_KEY=your_openai_key_here
 ANTHROPIC_API_KEY=your_anthropic_key_here
+
+# Optional: Export behavior
+OF_EXPORT_MAX_AGE=1800  # Maximum age of exports in seconds
 ```
 
-## Evernote Integration
-
-The Evernote integration enables seamless context switching between tasks and their related reference materials. It helps you maintain focus by ensuring all relevant information is linked and accessible.
-
-1. Register your application at [Evernote Developers](https://dev.evernote.com/):
-   - Create a new API key
-   - Set OAuth callback URL to `http://localhost:8080`
-   - Copy your Client ID and Client Secret
-
-2. Update `.env` with your Evernote credentials:
+### 2. Initial Setup
 ```bash
-EVERNOTE_CLIENT_ID=your_client_id
-EVERNOTE_CLIENT_SECRET=your_client_secret
-EVERNOTE_SANDBOX=true  # Set to false for production
+# Verify installation
+ofcli --help
+
+# Test OmniFocus connection
+ofcli diagnostics
+
+# Perform initial data sync
+ofcli list-live-projects
 ```
 
-3. First-time authentication:
-   - Run any Evernote-related command
-   - Browser will open for authorization
-   - Grant access to your Evernote account
-   - Authorization completes automatically
+## 🎯 Quick Start Guide
 
-## Usage overview
+### Basic Task Management
+```bash
+# Add a new task
+ofcli add --title "Review quarterly reports" --project "Work" --due "next Friday"
 
-### Task-Note Integration
+# List tasks in a project
+ofcli list --project "Work" --json
+
+# Complete a task
+ofcli complete TASK_ID
+
+# Search across all tasks
+ofcli search "quarterly"
+```
+
+### AI-Enhanced Operations
+```bash
+# AI-powered task prioritization
+ofcli prioritize --project "Work" --limit 10
+
+# Intelligent inbox cleanup
+ofcli cleanup
+
+# Smart task auditing
+ofcli audit --project "Personal"
+```
+
+### Calendar Integration
+```bash
+# Check calendar conflicts
+ofcli calendar-conflicts --date "2024-01-15"
+
+# Add calendar event
+ofcli add-calendar-event --title "Team Meeting" --start "2024-01-15 14:00"
+
+# Verify calendar integration
+ofcli calendar-verify
+```
+
+### Advanced Workflows
+```bash
+# Archive completed tasks
+ofcli archive-completed --before "2024-01-01"
+
+# Delegate tasks with AI-generated emails
+ofcli delegate TASK_ID --to "colleague@company.com"
+
+# Extract action items from messages
+ofcli scan-messages --days 7
+```
+
+## 📊 Command Reference
+
+### Core Commands
+| Command | Description |
+|---------|-------------|
+| `add` | Create new tasks or projects |
+| `list` | Display tasks and projects |
+| `complete` | Mark tasks as completed |
+| `search` | Search across all data |
+| `delete` | Remove tasks or projects |
+
+### AI Commands
+| Command | Description |
+|---------|-------------|
+| `prioritize` | AI-powered task prioritization |
+| `cleanup` | Intelligent inbox organization |
+| `audit` | Task categorization and cleanup suggestions |
+| `delegate` | AI-assisted task delegation |
+
+### Calendar Commands
+| Command | Description |
+|---------|-------------|
+| `calendar-conflicts` | Check for scheduling conflicts |
+| `calendar-verify` | Test calendar integration |
+| `add-calendar-event` | Create new calendar events |
+
+### Utility Commands
+| Command | Description |
+|---------|-------------|
+| `diagnostics` | System health check |
+| `archive-completed` | Archive old completed tasks |
+| `scan-messages` | Extract action items from iMessage |
+| `next` | Get next actions report |
+
+## 🏗 Architecture
+
+OFCLI follows a modular architecture designed for reliability and extensibility:
+
+```
+ofcli/
+├── commands/           # CLI command implementations
+├── omnifocus_api/      # OmniFocus integration layer
+├── ai_integration/     # AI service integrations
+├── utils/              # Shared utilities and helpers
+├── plugins/            # OmniFocus automation plugins
+└── tests/             # Comprehensive test suite
+```
+
+### Key Design Principles
+- **Single Source of Truth**: Always sync with authoritative OmniFocus data
+- **Fail-Safe Operations**: Comprehensive error handling and data validation
+- **Apple-First**: Native integration with Apple ecosystem technologies
+- **AI-Enhanced**: Intelligent automation without replacing human judgment
+
+## 🔧 Advanced Configuration
+
+### Custom Export Behavior
+```bash
+# Force fresh export on every command
+export OF_RUNNER_V2=1
+
+# Use alternative export location
+export OF_EXPORT_PATH="/custom/path"
+```
+
+### Calendar Integration Setup
+```bash
+# Test EventKit permissions
+ofcli calendar-verify
+
+# Configure calendar preferences
+ofcli config set-calendar "Work Calendar"
+```
+
+### Plugin Development
+OFCLI supports custom OmniFocus plugins written in OmniJS:
+
+```javascript
+// plugins/custom_automation.omnijs
+(() => {
+    const action = new PlugIn.Action("Custom Action", (selection) => {
+        // Your automation logic here
+    });
+    return action;
+})();
+```
+
+## 🧪 Testing
+
+Run the comprehensive test suite:
 
 ```bash
-# Link a note to a task
-ofcli link task_id --note note_id
+# Run all tests
+pytest
 
-# Create a new task from a note
-ofcli create-task --from-note note_id
+# Run specific test categories
+pytest tests/test_commands.py
+pytest tests/test_ai_integration.py
 
-# View task with its linked notes
-ofcli view task_id --with-context
-
-# Switch to a task's context
-ofcli switch-context task_id
-
-# Find tasks related to a note
-ofcli find-tasks --note note_id
-
-# Find notes related to a task
-ofcli find-notes --task task_id
-
-# Create a new note for task context
-ofcli create-note task_id
+# Run with coverage
+pytest --cov=ofcli
 ```
 
-### Context Management
+## 🤝 Contributing
 
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
 ```bash
-# Show current context
-ofcli context
-
-# List available contexts
-ofcli contexts
-
-# Switch to a specific context
-ofcli switch-context context_id
-
-# Auto-suggest next context based on time/location
-ofcli suggest-context
+git clone https://github.com/jmg421/omnifocus-cli.git
+cd omnifocus-cli
+pip install -e ".[dev]"
+pre-commit install
 ```
 
-### Adding Tasks
+## 📝 License
 
-```bash
-ofcli add --title "Complete project proposal" --project "Work" --due "tomorrow at 5pm"
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Listing Tasks
+## 🆘 Support
 
-```bash
-# List all tasks
-ofcli list
+- **Issues**: [GitHub Issues](https://github.com/jmg421/omnifocus-cli/issues)
+- **Documentation**: [Full Documentation](https://github.com/jmg421/omnifocus-cli#readme)
+- **Discussions**: [GitHub Discussions](https://github.com/jmg421/omnifocus-cli/discussions)
 
-# List tasks in a specific project
-ofcli list --project "Work"
+## 🎉 Acknowledgments
 
-# Output in JSON format
-ofcli list --json
-```
+- OmniFocus team for creating an incredible productivity application
+- Apple for the robust AppleScript and EventKit frameworks
+- OpenAI and Anthropic for advancing AI accessibility
+- The Python community for excellent tooling and libraries
 
-### Completing Tasks
+---
 
-```bash
-ofcli complete task_id_1 task_id_2
-```
-
-### AI Prioritization
-
-```bash
-# Prioritize all tasks
-ofcli prioritize
-
-# Prioritize tasks in a specific project
-ofcli prioritize --project "Work"
-
-# Limit the number of tasks to prioritize
-ofcli prioritize --limit 5
-```
-
-### Delegating Tasks
-
-```bash
-ofcli delegate task_id --to "colleague@example.com"
-```
-
-### Test Evernote Connection
-
-```bash
-ofcli test-evernote
-```
-
-### Ingest fresh export into the local database
-
-```bash
-python3 scripts/ingest_export.py  # automatically exports, archives, validates, ingests, and prints a change report
-```
-
-Example summary:
-
-```
-Projects – new: 2, updated: 1
-Tasks    – new: 14, updated: 3, potential dup names: 1
-  • Possible duplicate task 'Pay rent' (id 7aB…)
-```
-
-### Evernote helpers (legacy)
-
-```bash
-# Link a note to a task
-ofcli link task_id --note note_id
-
-# Export task context to Evernote
-ofcli export-task task_id --to evernote
-```
-
-## Advanced Usage
-
-For more advanced usage options, please refer to the documentation in the `docs/` directory.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+**Built with ❤️ for the OmniFocus and productivity community**

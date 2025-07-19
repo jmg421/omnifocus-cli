@@ -17,9 +17,17 @@ except ImportError:
     # This might suppress more urllib3 warnings than intended, but should catch the SSL one.
     warnings.filterwarnings('ignore', message=".*OpenSSL 1.1.1+.*")
 
-from ofcli_utils import load_env_vars
+try:
+    from .utils.config import load_env_vars
+except ImportError:
+    # Fallback for when running as script
+    from utils.config import load_env_vars
 from enum import Enum
-from omnifocus_api import test_evernote_export
+try:
+    from .omnifocus_api import test_evernote_export
+except ImportError:
+    # Fallback for when running as script
+    from omnifocus_api import test_evernote_export
 import json
 import csv # Add csv import
 import glob
@@ -2818,11 +2826,27 @@ def bulk_create_command(
                 
                 # Add due date if provided
                 if task['due_date']:
-                    script_parts.append('        set due date of newTask to date "' + task['due_date'] + '"')
+                    # Convert YYYY-MM-DD format to AppleScript date format
+                    try:
+                        from datetime import datetime
+                        date_obj = datetime.strptime(task['due_date'], "%Y-%m-%d")
+                        applescript_date = date_obj.strftime("%B %d, %Y 00:00:00")
+                        script_parts.append('        set due date of newTask to date "' + applescript_date + '"')
+                    except ValueError:
+                        # Fallback to original format if parsing fails
+                        script_parts.append('        set due date of newTask to date "' + task['due_date'] + '"')
                 
                 # Add defer date if provided
                 if task['defer_date']:
-                    script_parts.append('        set defer date of newTask to date "' + task['defer_date'] + '"')
+                    # Convert YYYY-MM-DD format to AppleScript date format
+                    try:
+                        from datetime import datetime
+                        date_obj = datetime.strptime(task['defer_date'], "%Y-%m-%d")
+                        applescript_date = date_obj.strftime("%B %d, %Y 00:00:00")
+                        script_parts.append('        set defer date of newTask to date "' + applescript_date + '"')
+                    except ValueError:
+                        # Fallback to original format if parsing fails
+                        script_parts.append('        set defer date of newTask to date "' + task['defer_date'] + '"')
                 
                 # Add estimated duration if provided
                 if task['duration']:
@@ -2965,11 +2989,27 @@ def bulk_create_from_csv_command(
                 
                 # Add due date if provided
                 if task['due_date']:
-                    script_parts.append('        set due date of newTask to date "' + task['due_date'] + '"')
+                    # Convert YYYY-MM-DD format to AppleScript date format
+                    try:
+                        from datetime import datetime
+                        date_obj = datetime.strptime(task['due_date'], "%Y-%m-%d")
+                        applescript_date = date_obj.strftime("%B %d, %Y 00:00:00")
+                        script_parts.append('        set due date of newTask to date "' + applescript_date + '"')
+                    except ValueError:
+                        # Fallback to original format if parsing fails
+                        script_parts.append('        set due date of newTask to date "' + task['due_date'] + '"')
                 
                 # Add defer date if provided
                 if task['defer_date']:
-                    script_parts.append('        set defer date of newTask to date "' + task['defer_date'] + '"')
+                    # Convert YYYY-MM-DD format to AppleScript date format
+                    try:
+                        from datetime import datetime
+                        date_obj = datetime.strptime(task['defer_date'], "%Y-%m-%d")
+                        applescript_date = date_obj.strftime("%B %d, %Y 00:00:00")
+                        script_parts.append('        set defer date of newTask to date "' + applescript_date + '"')
+                    except ValueError:
+                        # Fallback to original format if parsing fails
+                        script_parts.append('        set defer date of newTask to date "' + task['defer_date'] + '"')
                 
                 # Add estimated duration if provided
                 if task['duration']:
