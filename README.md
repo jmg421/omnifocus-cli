@@ -5,42 +5,46 @@
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://github.com/jmg421/omnifocus-cli)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/jmg421/omnifocus-cli/blob/main/LICENSE)
 
-A powerful, AI-enhanced command-line interface for OmniFocus with comprehensive Apple ecosystem integration. Transform your productivity workflow with intelligent task management, calendar integration, and seamless automation.
+A powerful command-line interface for OmniFocus that respects your trusted system while adding automation and Apple ecosystem integration. Built by a solo founder who lives in OmniFocus daily.
 
 **Built by the founder of [nodes.bio](https://nodes.bio) and shared with the OmniFocus community.**
 
-## 🚀 Key Features
+## 🎯 The Killer Feature: Single Source of Truth
 
-### Core Task Management
-- **Authoritative AppleScript Integration**: Direct, real-time communication with OmniFocus
-- **AI-Powered Task Prioritization**: Leverage OpenAI GPT-4 and Anthropic Claude for intelligent task ordering
-- **Intelligent Task Categorization**: Automated inbox cleanup with AI-driven project suggestions
-- **Batch Operations**: Efficiently manage multiple tasks and projects simultaneously
+**OFCLI never changes your OmniFocus data without your explicit command.** It pulls fresh exports, processes them, and presents information - but OmniFocus remains your authoritative system. No sync conflicts, no data corruption, no surprises.
 
-### Apple Ecosystem Integration
-- **EventKit Calendar Integration**: Native macOS calendar access without AppleScript timeouts
-- **icalBuddy Support**: Advanced calendar querying and conflict detection
+This is the CLI that respects your trusted system.
+
+## 🚀 Core Features (Battle-Tested)
+
+### ✅ **Authoritative OmniFocus Integration**
+- **Fresh Export Guarantee**: Always pulls latest data from OmniFocus via AppleScript
+- **Real-time Communication**: Direct AppleScript integration for commands
+- **Schema Validation**: Pydantic models ensure data integrity
+- **No Data Conflicts**: OmniFocus remains your single source of truth
+
+### ✅ **Apple Ecosystem Integration** 
 - **AppleScript Calendar Bridge**: Seamless integration with Apple Calendar events
-- **Messages Integration**: Extract action items from iMessage conversations
+- **EventKit Calendar Access**: Native macOS calendar integration without timeouts
+- **Native macOS Integration**: Built specifically for the Apple ecosystem
 
-### Advanced Workflow Features
-- **Fresh Export Guarantee**: Always work with up-to-date OmniFocus data via automatic JSON exports
-- **Schema Validation**: Pydantic-based data validation ensures data integrity
-- **SQLite Integration**: Local database for advanced querying and reporting
-- **Evernote Sync**: Bidirectional task-note synchronization for context switching
+### ✅ **Productivity Features**
+- **Batch Operations**: Efficiently manage multiple tasks and projects
+- **Advanced Search**: Fast, flexible search across all your data
+- **Local SQLite Cache**: Enhanced querying while respecting OmniFocus as source
+- **Rich CLI Output**: Beautiful, readable formatting for terminal workflows
 
-### AI-Enhanced Capabilities
-- **Natural Language Processing**: Parse and understand complex task descriptions
-- **Context-Aware Delegation**: AI-generated delegation emails and task assignments
-- **Smart Scheduling**: Calendar-aware task scheduling with conflict detection
-- **Intelligent Cleanup**: Automated inbox organization with confidence scoring
+### 🧪 **Experimental Features** (Use with Caution)
+- **AI Task Analysis**: Early-stage OpenAI/Anthropic integration for task insights
+- **Calendar Conflict Detection**: Experimental scheduling awareness
+- **Inbox Cleanup Suggestions**: AI-powered project categorization (early beta)
 
 ## 📋 Requirements
 
 - **macOS 10.15+** (OmniFocus requirement)
 - **Python 3.9+**
 - **OmniFocus 3 for Mac**
-- **API Keys**: OpenAI and/or Anthropic for AI features
+- **API Keys**: OpenAI and/or Anthropic (optional, for experimental AI features)
 
 ## 🛠 Installation
 
@@ -65,19 +69,7 @@ pip install -e ".[dev]"
 
 ## ⚙️ Configuration
 
-### 1. API Keys Setup
-Create a `.ofcli.env` file in your home directory:
-
-```bash
-# AI Services (at least one required)
-OPENAI_API_KEY=your_openai_key_here
-ANTHROPIC_API_KEY=your_anthropic_key_here
-
-# Optional: Export behavior
-OF_EXPORT_MAX_AGE=1800  # Maximum age of exports in seconds
-```
-
-### 2. Initial Setup
+### 1. Basic Setup (Required)
 ```bash
 # Verify installation
 ofcli --help
@@ -85,13 +77,22 @@ ofcli --help
 # Test OmniFocus connection
 ofcli diagnostics
 
-# Perform initial data sync
+# List your projects (core functionality)
 ofcli list-live-projects
+```
+
+### 2. AI Features Setup (Optional)
+Create a `.ofcli.env` file in your home directory for experimental AI features:
+
+```bash
+# AI Services (optional - only needed for experimental features)
+OPENAI_API_KEY=your_openai_key_here
+ANTHROPIC_API_KEY=your_anthropic_key_here
 ```
 
 ## 🎯 Quick Start Guide
 
-### Basic Task Management
+### Core Task Management (Reliable)
 ```bash
 # Add a new task
 ofcli add --title "Review quarterly reports" --project "Work" --due "next Friday"
@@ -104,129 +105,97 @@ ofcli complete TASK_ID
 
 # Search across all tasks
 ofcli search "quarterly"
-```
 
-### AI-Enhanced Operations
-```bash
-# AI-powered task prioritization
-ofcli prioritize --project "Work" --limit 10
-
-# Intelligent inbox cleanup
-ofcli cleanup
-
-# Smart task auditing
-ofcli audit --project "Personal"
-```
-
-### Calendar Integration
-```bash
-# Check calendar conflicts
-ofcli calendar-conflicts --date "2024-01-15"
-
-# Add calendar event
-ofcli add-calendar-event --title "Team Meeting" --start "2024-01-15 14:00"
-
-# Verify calendar integration
-ofcli calendar-verify
-```
-
-### Advanced Workflows
-```bash
 # Archive completed tasks
 ofcli archive-completed --before "2024-01-01"
+```
 
-# Delegate tasks with AI-generated emails
-ofcli delegate TASK_ID --to "colleague@company.com"
+### System Health & Diagnostics
+```bash
+# Check everything is working
+ofcli diagnostics
 
-# Extract action items from messages
-ofcli scan-messages --days 7
+# Verify OmniFocus connection
+ofcli list-live-projects
+
+# Get system status
+ofcli next
+```
+
+### Experimental AI Features (Beta)
+```bash
+# AI task analysis (requires API keys)
+ofcli prioritize --project "Work" --limit 10
+
+# Inbox cleanup suggestions
+ofcli cleanup
+
+# Task categorization audit
+ofcli audit --project "Personal"
 ```
 
 ## 📊 Command Reference
 
-### Core Commands
-| Command | Description |
-|---------|-------------|
-| `add` | Create new tasks or projects |
-| `list` | Display tasks and projects |
-| `complete` | Mark tasks as completed |
-| `search` | Search across all data |
-| `delete` | Remove tasks or projects |
+### Core Commands (Stable)
+| Command | Description | Status |
+|---------|-------------|--------|
+| `add` | Create new tasks or projects | ✅ Stable |
+| `list` | Display tasks and projects | ✅ Stable |
+| `complete` | Mark tasks as completed | ✅ Stable |
+| `search` | Search across all data | ✅ Stable |
+| `delete` | Remove tasks or projects | ✅ Stable |
+| `archive-completed` | Archive old completed tasks | ✅ Stable |
 
-### AI Commands
-| Command | Description |
-|---------|-------------|
-| `prioritize` | AI-powered task prioritization |
-| `cleanup` | Intelligent inbox organization |
-| `audit` | Task categorization and cleanup suggestions |
-| `delegate` | AI-assisted task delegation |
+### Experimental Commands (Beta)
+| Command | Description | Status |
+|---------|-------------|--------|
+| `prioritize` | AI-powered task analysis | 🧪 Experimental |
+| `cleanup` | Inbox organization suggestions | 🧪 Experimental |
+| `audit` | Task categorization analysis | 🧪 Experimental |
 
-### Calendar Commands
-| Command | Description |
-|---------|-------------|
-| `calendar-conflicts` | Check for scheduling conflicts |
-| `calendar-verify` | Test calendar integration |
-| `add-calendar-event` | Create new calendar events |
-
-### Utility Commands
-| Command | Description |
-|---------|-------------|
-| `diagnostics` | System health check |
-| `archive-completed` | Archive old completed tasks |
-| `scan-messages` | Extract action items from iMessage |
-| `next` | Get next actions report |
+### System Commands
+| Command | Description | Status |
+|---------|-------------|--------|
+| `diagnostics` | System health check | ✅ Stable |
+| `next` | Get next actions report | ✅ Stable |
 
 ## 🏗 Architecture
 
-OFCLI follows a modular architecture designed for reliability and extensibility:
+OFCLI follows a clear principle: **OmniFocus is the source of truth.**
 
 ```
 ofcli/
 ├── commands/           # CLI command implementations
-├── omnifocus_api/      # OmniFocus integration layer
-├── ai_integration/     # AI service integrations
-├── utils/              # Shared utilities and helpers
-├── plugins/            # OmniFocus automation plugins
+├── omnifocus_api/      # OmniFocus AppleScript integration
+├── ai_integration/     # Experimental AI features (optional)
+├── utils/              # Data loading and validation
 └── tests/             # Comprehensive test suite
 ```
 
-### Key Design Principles
-- **Single Source of Truth**: Always sync with authoritative OmniFocus data
-- **Fail-Safe Operations**: Comprehensive error handling and data validation
-- **Apple-First**: Native integration with Apple ecosystem technologies
-- **AI-Enhanced**: Intelligent automation without replacing human judgment
+### Design Principles
+1. **OmniFocus as Single Source of Truth**: Never compete with your trusted system
+2. **Apple Ecosystem First**: Built for macOS, AppleScript, and Apple Calendar
+3. **Fail-Safe Operations**: Comprehensive error handling and validation
+4. **Experimental vs Stable**: Clear distinction between reliable and beta features
 
 ## 🔧 Advanced Configuration
 
-### Custom Export Behavior
+### OmniFocus Export Behavior
 ```bash
 # Force fresh export on every command
 export OF_RUNNER_V2=1
 
-# Use alternative export location
-export OF_EXPORT_PATH="/custom/path"
+# Control export freshness (seconds)
+export OF_EXPORT_MAX_AGE=1800
 ```
 
-### Calendar Integration Setup
+### Calendar Integration
 ```bash
-# Test EventKit permissions
+# Test calendar integration
 ofcli calendar-verify
 
-# Configure calendar preferences
-ofcli config set-calendar "Work Calendar"
-```
-
-### Plugin Development
-OFCLI supports custom OmniFocus plugins written in OmniJS:
-
-```javascript
-// plugins/custom_automation.omnijs
-(() => {
-    const action = new PlugIn.Action("Custom Action", (selection) => {
-        // Your automation logic here
-    });
-    return action;
-})();
+# Check for scheduling conflicts
+ofcli calendar-conflicts --date "2024-01-15"
 ```
 
 ## 🧪 Testing
@@ -239,7 +208,7 @@ pytest
 
 # Run specific test categories
 pytest tests/test_commands.py
-pytest tests/test_ai_integration.py
+pytest tests/test_imports.py
 
 # Run with coverage
 pytest --cov=ofcli
@@ -247,7 +216,12 @@ pytest --cov=ofcli
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions! Focus areas:
+
+1. **Core OmniFocus Integration**: Improving AppleScript reliability
+2. **Apple Ecosystem Features**: Calendar, Shortcuts, etc.
+3. **Test Coverage**: Ensuring reliability
+4. **Documentation**: Usage examples and guides
 
 ### Development Setup
 ```bash
@@ -261,11 +235,11 @@ pre-commit install
 
 As the founder of [nodes.bio](https://nodes.bio), I wear every hat in the company - CEO, CTO, CFO, you name it. Context switching between strategic thinking and operational execution was killing my productivity.
 
-I'd been living in OmniFocus for years, but I needed something more. I needed AI to help me prioritize the chaos, calendar integration to reality-check my time, and automation to reduce the cognitive load of task management.
+I'd been living in OmniFocus for years, but I needed something more. I needed better ways to process my inbox, calendar integration to reality-check my time, and automation to reduce the cognitive load.
 
-So I built OFCLI for myself. It became the backbone of how I run my startup - combining OmniFocus as my trusted system with AI intelligence and Apple ecosystem integration.
+So I built OFCLI for myself. It became the backbone of how I run my startup - combining OmniFocus as my trusted system with command-line efficiency and Apple ecosystem integration.
 
-**This tool literally runs my life and my company.** I'm sharing it because the OmniFocus community gave me the foundation for effective time management, and this is my way of giving back.
+**This tool literally runs my life and my company.** I'm sharing it because the OmniFocus and Getting Things Done (GTD) community gave me the foundation for effective time management, and this is my way of giving back.
 
 ## 📝 License
 
@@ -280,9 +254,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🎉 Acknowledgments
 
 - OmniFocus team for creating an incredible productivity application
+- David Allen for Getting Things Done methodology
 - Apple for the robust AppleScript and EventKit frameworks
-- OpenAI and Anthropic for advancing AI accessibility
-- The Python community for excellent tooling and libraries
+- The OmniFocus community for sharing workflows and wisdom
 
 ---
 
