@@ -34,7 +34,7 @@ class AppleScriptCalendarIntegration:
         self.family_calendars = [
             "Family", "John", "Christina", "Grace", "Evan", "Weston",
             "UA Slammy Gold 14U", "Slammy Gold 14U", "Westerville Naturals 14U",
-            "Force Aquatics", "Sports"
+            "Force Aquatics", "Sports", "Christina Gmail"
         ]
     
     def get_calendars(self) -> List[str]:
@@ -138,23 +138,22 @@ class AppleScriptCalendarIntegration:
             try:
                 print(f"  📅 Checking {calendar} calendar...")
                 
-                # Use a more targeted approach - only get events that start in the range
+                # Use the actual date range parameters
                 script = f'''
                 tell application "Calendar"
                     set cal to calendar "{calendar}"
                     set eventList to {{}}
                     set eventCount to 0
                     
-                    -- Get current date and create a 24-hour window
-                    set currentDate to current date
-                    set tomorrowDate to currentDate + (24 * 60 * 60) -- Add 24 hours
+                    -- Convert input dates to AppleScript date objects
+                    set startDate to date "{start_date.strftime('%Y-%m-%d %H:%M:%S')}"
+                    set endDate to date "{end_date.strftime('%Y-%m-%d %H:%M:%S')}"
                     
                     repeat with evt in events of cal
                         set evtStart to start date of evt
                         
-                        -- Check if event starts within the next 24 hours
-                        -- Use a more flexible comparison that includes events starting now or later today
-                        if (evtStart ≥ currentDate and evtStart ≤ tomorrowDate) then
+                        -- Check if event starts within the specified date range
+                        if (evtStart ≥ startDate and evtStart ≤ endDate) then
                             set eventCount to eventCount + 1
                             
                             -- Limit to first 50 events to avoid timeout
