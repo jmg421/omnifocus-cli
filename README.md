@@ -7,6 +7,8 @@
 
 A powerful, AI-enhanced command-line interface for OmniFocus with comprehensive Apple ecosystem integration. Transform your productivity workflow with intelligent task management, calendar integration, and seamless automation.
 
+**Built by the founder of [nodes.bio](https://nodes.bio) and shared with the OmniFocus community.**
+
 ## 🚀 Key Features
 
 ### Core Task Management
@@ -255,6 +257,16 @@ pip install -e ".[dev]"
 pre-commit install
 ```
 
+## 💭 The Story Behind OFCLI
+
+As the founder of [nodes.bio](https://nodes.bio), I wear every hat in the company - CEO, CTO, CFO, you name it. Context switching between strategic thinking and operational execution was killing my productivity.
+
+I'd been living in OmniFocus for years, but I needed something more. I needed AI to help me prioritize the chaos, calendar integration to reality-check my time, and automation to reduce the cognitive load of task management.
+
+So I built OFCLI for myself. It became the backbone of how I run my startup - combining OmniFocus as my trusted system with AI intelligence and Apple ecosystem integration.
+
+**This tool literally runs my life and my company.** I'm sharing it because the OmniFocus community gave me the foundation for effective time management, and this is my way of giving back.
+
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -274,4 +286,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for the OmniFocus and productivity community**
+**Built with ❤️ by a solo founder who lives and breathes OmniFocus**
