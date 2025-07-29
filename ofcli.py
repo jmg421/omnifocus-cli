@@ -81,7 +81,7 @@ def get_item_date(item_date_val: Optional[str]) -> Optional[date]:
 # NEW function to load and prepare data (rewritten for OmniJS full_dump v1.2 structure)
 def load_and_prepare_omnifocus_data(json_file_path: str) -> Dict[str, Any]:
     """
-    Loads OmniFocus data from the JSON export (produced by exportMasterPlanData.omnijs v11.final)
+    Loads OmniFocus data from the JSON export (produced by OmniJS export script)
     and prepares it for querying. 
     Handles nested structure of folders, projects, and tasks.
     Returns a dictionary containing 'all_tasks', 'projects_map', 'folders_map', 'tags_map'.

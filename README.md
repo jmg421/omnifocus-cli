@@ -7,7 +7,7 @@
 
 A powerful command-line interface for OmniFocus that respects your trusted system while adding automation and Apple ecosystem integration. Built by a solo founder who lives in OmniFocus daily.
 
-**Built by the founder of [nodes.bio](https://nodes.bio) and shared with the OmniFocus community.**
+**Built by a solo founder and shared with the OmniFocus community.**
 
 ## 🎯 The Killer Feature: Single Source of Truth
 
@@ -233,7 +233,7 @@ pre-commit install
 
 ## 💭 The Story Behind OFCLI
 
-As the founder of [nodes.bio](https://nodes.bio), I wear every hat in the company - CEO, CTO, CFO, you name it. Context switching between strategic thinking and operational execution was killing my productivity.
+As a solo founder, I wear every hat in the company - CEO, CTO, CFO, you name it. Context switching between strategic thinking and operational execution was killing my productivity.
 
 I'd been living in OmniFocus for years, but I needed something more. I needed better ways to process my inbox, calendar integration to reality-check my time, and automation to reduce the cognitive load.
 

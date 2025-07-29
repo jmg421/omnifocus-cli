@@ -2,7 +2,7 @@
     "author": "John Muirhead-Gould",
     "targets": ["omnifocus"],
     "type": "action",
-    "identifier": "com.jmg.exportmasterplan.v11.final",
+    "identifier": "com.jmg.exportomnifocus.v11.final",
     "version": "1.2.2",
     "description": "Exports OmniFocus database to JSON.",
     "label": "Export Full DB to JSON (v11.final)",
