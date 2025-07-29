@@ -197,3 +197,18 @@ Temporary Items
 tmp/
 temp/
 *.tmp 
+# Personal development files
+ai_integration/calendar_analyzer.py
+ai_integration/family_scheduler.py
+ai_integration/personal_*.py
+ai_integration/family_*.py
+
+# Local development
+.env.local
+config/local_*.py
+data/personal_*.json
+data/family_*.json
+
+# Backup files
+*backup*
+*private*
