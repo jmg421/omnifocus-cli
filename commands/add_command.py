@@ -42,12 +42,8 @@ def handle_add(args):
 
 def escape_applescript_string(s: str) -> str:
     if not s: return ""
-    # Order matters: backslash first, then single quote, then double quote
+    # Order matters: backslash first, then double quote
     s = s.replace('\\', '\\\\') # Escape backslashes
-    s = s.replace("'", "'\\''") # Escape single quotes for AppleScript (doubling them within a single-quoted string)
-                                 # or more robustly: replace ' with '\'' which works inside AS double-quoted strings.
-                                 # Let's use the method from the TS example: replace ' with \'
-    s = s.replace("'", "\\'")   # Escape single quotes
     s = s.replace('"', '\\"')   # Escape double quotes
     return s
 

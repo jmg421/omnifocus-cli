@@ -35,9 +35,9 @@ class EventKitCalendarIntegration:
         self.authorized = self._check_authorization()
         
         self.family_calendars = [
-            "Family", "John", "Christina", "Grace", "Evan", "Weston",
-            "UA Slammy Gold 14U", "Slammy Gold 14U", "Westerville Naturals 14U", 
-            "Force Aquatics", "Sports", "OHS Run Brave Calendar", "Christina Gmail"
+            "Family", "Family Member 1", "Family Member 2", "Family Member 3", "Family Member 4", "Family Member 5",
+            "Sports Team 1", "Sports Team 2", "Sports Team 3", 
+            "Aquatics", "Sports", "School Calendar", "Family Gmail"
         ]
     
     def _check_authorization(self) -> bool:

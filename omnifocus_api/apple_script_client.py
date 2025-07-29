@@ -285,26 +285,60 @@ end tell
 
 def move_task_to_project(task_id: str, project_name: str) -> bool:
     """Move a task to a project using AppleScript."""
-    applescript = f'''
+    
+    # Handle [NEW] project creation
+    if project_name.startswith("[NEW] "):
+        actual_project_name = project_name[6:]  # Remove "[NEW] " prefix
+        applescript = f'''
+tell application "OmniFocus"
+    tell default document
+        try
+            set theTask to first flattened task whose id is "{task_id}"
+            
+            -- Try to find existing project first
+            set theProject to missing value
+            try
+                set theProject to first flattened project whose name is "{actual_project_name}"
+            on error
+                -- Project doesn't exist, create it
+                set theProject to make new project with properties {{name:"{actual_project_name}"}}
+            end try
+            
+            move theTask to end of tasks of theProject
+            return "SUCCESS"
+        on error errMsg number errNum
+            if errNum is -1728 or errNum is -1719 then
+                return "TASK_NOT_FOUND"
+            else
+                return "ERROR: " & errMsg
+            end if
+        end try
+    end tell
+end tell
+'''
+    else:
+        # Existing project lookup
+        applescript = f'''
 tell application "OmniFocus"
     tell default document
         try
             set theTask to first flattened task whose id is "{task_id}"
             set theProject to first flattened project whose name is "{project_name}"
-                    move theTask to end of tasks of theProject
-        return "SUCCESS"
-    on error errMsg number errNum
-        if errNum is -1728 or errNum is -1719 then
-            return "TASK_NOT_FOUND"
-        else if errNum is -1729 then
-            return "PROJECT_NOT_FOUND"
-        else
-            return "ERROR: " & errMsg
-        end if
+            move theTask to end of tasks of theProject
+            return "SUCCESS"
+        on error errMsg number errNum
+            if errNum is -1728 or errNum is -1719 then
+                return "TASK_NOT_FOUND"
+            else if errNum is -1729 then
+                return "PROJECT_NOT_FOUND"
+            else
+                return "ERROR: " & errMsg
+            end if
         end try
     end tell
 end tell
 '''
+    
     try:
         result = execute_omnifocus_applescript(applescript)
         if result == "SUCCESS":
