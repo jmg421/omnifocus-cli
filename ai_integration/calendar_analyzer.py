@@ -64,7 +64,7 @@ class CalendarAnalyzer:
         """Load events from specified calendars using AppleScript."""
         if calendar_names is None:
             # Default to common family calendars
-            calendar_names = ["Family", "John", "Christina", "Grace", "Evan", "Weston"]
+            calendar_names = ["Family", "Family Member 1", "Family Member 2", "Family Member 3", "Family Member 4", "Family Member 5"]
         
         events = []
         

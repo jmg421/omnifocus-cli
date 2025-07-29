@@ -17,21 +17,13 @@ except ImportError:
     # This might suppress more urllib3 warnings than intended, but should catch the SSL one.
     warnings.filterwarnings('ignore', message=".*OpenSSL 1.1.1+.*")
 
-try:
-    from .utils.config import load_env_vars
-except ImportError:
-    # Fallback for when running as script
-    from utils.config import load_env_vars
+from .utils.config import load_env_vars
 from enum import Enum
-try:
-    from .omnifocus_api import test_evernote_export
-except ImportError:
-    # Fallback for when running as script
-    from omnifocus_api import test_evernote_export
+from .omnifocus_api import test_evernote_export
 import json
 import csv # Add csv import
 import glob
-from utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
+from .utils.data_loading import load_and_prepare_omnifocus_data, query_prepared_data, get_latest_json_export_path
 
 import subprocess
 from rich.console import Console
@@ -41,7 +33,7 @@ from pathlib import Path
 def get_latest_json_export_path():
     """Return path to a fresh export, creating one if necessary."""
     try:
-        from utils.ensure_export import ensure_fresh_export
+        from .utils.ensure_export import ensure_fresh_export
         return ensure_fresh_export(int(os.getenv("OF_EXPORT_MAX_AGE", "1800")))
     except Exception as e:
         # First try data/exports directory
@@ -339,23 +331,23 @@ app = typer.Typer(
 )
 
 # Use direct imports from existing directories
-from commands.add_command import handle_add, handle_add_detailed_task, handle_create_project
-from commands.list_command import handle_list, handle_list_live_tasks_in_project, handle_list_live_projects
-from commands.complete_command import handle_complete
-from commands.prioritize_command import prioritize as prioritize_command
-from commands.delegation_command import handle_delegation
-from commands.audit_command import handle_audit
-from commands.calendar_command import handle_calendar, handle_add_calendar_event
-from commands.imessage_command import handle_imessage
-from commands.scan_command import handle_scan
-from commands.cleanup_command import handle_cleanup
-from commands.search_command import handle_search
-from commands.merge_command import handle_merge_projects
-from commands.delete_command import handle_delete_project, handle_delete_task
-from commands.icalbuddy_integration import handle_icalbuddy_test, handle_icalbuddy_verify, handle_icalbuddy_conflicts
-from commands.applescript_calendar_integration import handle_applescript_calendar_test, handle_applescript_calendar_verify, handle_applescript_calendar_conflicts, handle_applescript_calendar_events
-from commands.next_command import handle_next
-from commands.archive_command import handle_archive_completed
+from .commands.add_command import handle_add, handle_add_detailed_task, handle_create_project
+from .commands.list_command import handle_list, handle_list_live_tasks_in_project, handle_list_live_projects
+from .commands.complete_command import handle_complete
+from .commands.prioritize_command import prioritize as prioritize_command
+from .commands.delegation_command import handle_delegation
+from .commands.audit_command import handle_audit
+from .commands.calendar_command import handle_calendar, handle_add_calendar_event
+from .commands.imessage_command import handle_imessage
+from .commands.scan_command import handle_scan
+from .commands.cleanup_command import handle_cleanup
+from .commands.search_command import handle_search
+from .commands.merge_command import handle_merge_projects
+from .commands.delete_command import handle_delete_project, handle_delete_task
+from .commands.icalbuddy_integration import handle_icalbuddy_test, handle_icalbuddy_verify, handle_icalbuddy_conflicts
+from .commands.applescript_calendar_integration import handle_applescript_calendar_test, handle_applescript_calendar_verify, handle_applescript_calendar_conflicts, handle_applescript_calendar_events
+from .commands.next_command import handle_next
+from .commands.archive_command import handle_archive_completed
 
 @app.command("add")
 def add(
@@ -934,7 +926,7 @@ def list_live_projects_command(
     `commands.list_command.handle_list_live_projects` so we simply forward the
     option.
     """
-    from commands.list_command import handle_list_live_projects  # Imported lazily to avoid any Typer circulars
+    from .commands.list_command import handle_list_live_projects  # Imported lazily to avoid any Typer circulars
 
     args = type("Args", (), {"json_output": json_output})
     handle_list_live_projects(args)
@@ -1789,7 +1781,7 @@ def archive_completed_command(
 @app.command("diagnostics")
 def diagnostics():
     """Comprehensive health check – export, validation, DB ingest, duplicates."""
-    from utils.logger import get_logger
+    from .utils.logger import get_logger
     log = get_logger("diagnostics")
 
     console = Console()
@@ -1807,7 +1799,7 @@ def diagnostics():
 
     # 2) Latest export & validation
     try:
-        from utils.ensure_export import ensure_fresh_export
+        from .utils.ensure_export import ensure_fresh_export
         export_path = ensure_fresh_export(1800)
         console.print(f"✅ Latest export: {export_path}", style="green")
     except Exception as e:
@@ -1816,7 +1808,7 @@ def diagnostics():
 
     # 3) Counts & validation via loader
     if export_path:
-        from utils.data_loading import load_and_prepare_omnifocus_data
+        from .utils.data_loading import load_and_prepare_omnifocus_data
         data = load_and_prepare_omnifocus_data(export_path)
         if data:
             console.print(
@@ -1970,7 +1962,7 @@ def schedule_command(
 ):
     """Schedule a family event with calendar integration and conflict analysis."""
     try:
-        from commands.schedule_family import schedule_family_event
+        from .commands.schedule_family import schedule_family_event
         attendee_list = [a.strip() for a in attendees.split(",")]
         analysis = schedule_family_event(
             title=title,
@@ -2143,28 +2135,28 @@ def tree_stats_command(
 @app.command("emergency-calendar")
 def emergency_calendar():
     """Emergency calendar access when automated methods fail (opens Calendar.app)."""
-    from commands.emergency_calendar_command import handle_emergency_calendar
+    from .commands.emergency_calendar_command import handle_emergency_calendar
     args = type('Args', (), {})
     handle_emergency_calendar(args)
 
 @app.command("emergency-calendar-analysis")  
 def emergency_calendar_analysis():
     """Analyze why automated calendar methods are failing."""
-    from commands.emergency_calendar_command import handle_emergency_calendar_report
+    from .commands.emergency_calendar_command import handle_emergency_calendar_report
     args = type('Args', (), {})
     handle_emergency_calendar_report(args)
 
 @app.command("calendar-today")
 def calendar_today():
     """Show today's calendar events using EventKit (FAST - no timeouts)."""
-    from commands.eventkit_calendar_command import handle_eventkit_calendar_today
+    from .commands.eventkit_calendar_command import handle_eventkit_calendar_today
     args = type('Args', (), {})
     handle_eventkit_calendar_today(args)
 
 @app.command("calendar-family") 
 def calendar_family():
     """Show family calendar events using EventKit (FAST - no timeouts)."""
-    from commands.eventkit_calendar_command import handle_eventkit_family_events
+    from .commands.eventkit_calendar_command import handle_eventkit_family_events
     args = type('Args', (), {})
     handle_eventkit_family_events(args)
 
@@ -2174,7 +2166,7 @@ def calendar_conflicts(
     end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
 ):
     """Check for calendar conflicts using EventKit (FAST - no timeouts)."""
-    from commands.eventkit_calendar_command import handle_eventkit_calendar_conflicts
+    from .commands.eventkit_calendar_command import handle_eventkit_calendar_conflicts
     args = type('Args', (), {
         'start_time': start_time,
         'end_time': end_time
@@ -3067,7 +3059,7 @@ def bulk_create_from_csv_command(
 @app.command("clear-cache")
 def clear_cache_command():
     """Clear the export cache and force a fresh export on next command."""
-    from utils.ensure_export import clear_export_cache
+    from .utils.ensure_export import clear_export_cache
     clear_export_cache()
     print("✅ Export cache cleared. Next command will trigger a fresh export if needed.")
 

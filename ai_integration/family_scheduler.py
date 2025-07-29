@@ -24,11 +24,11 @@ class TransportationMode(Enum):
     BIKE = "bike"
 
 class FamilyMember(Enum):
-    JOHN = "John"
-    CHRISTINA = "Christina"
-    EVAN = "Evan"
-    GRACE = "Grace"
-    WESTON = "Weston"
+    MEMBER_1 = "Family Member 1"
+    MEMBER_2 = "Family Member 2"
+    MEMBER_3 = "Family Member 3"
+    MEMBER_4 = "Family Member 4"
+    MEMBER_5 = "Family Member 5"
 
 @dataclass
 class Location:
@@ -99,33 +99,33 @@ class FamilyScheduler:
     
     def __init__(self):
         self.family_members = {
-            FamilyMember.JOHN: {
-                "name": "John",
-                "calendar": "John",
+            FamilyMember.MEMBER_1: {
+                "name": "Family Member 1",
+                "calendar": "Family Member 1",
                 "transportation": ["drive", "walk"],
                 "availability": "flexible"
             },
-            FamilyMember.CHRISTINA: {
-                "name": "Christina", 
-                "calendar": "Christina",
+            FamilyMember.MEMBER_2: {
+                "name": "Family Member 2", 
+                "calendar": "Family Member 2",
                 "transportation": ["drive", "walk"],
                 "availability": "flexible"
             },
-            FamilyMember.EVAN: {
-                "name": "Evan",
-                "calendar": "Evan", 
+            FamilyMember.MEMBER_3: {
+                "name": "Family Member 3",
+                "calendar": "Family Member 3", 
                 "transportation": ["drive", "walk"],
                 "availability": "work_schedule"
             },
-            FamilyMember.GRACE: {
-                "name": "Grace",
-                "calendar": "Grace",
+            FamilyMember.MEMBER_4: {
+                "name": "Family Member 4",
+                "calendar": "Family Member 4",
                 "transportation": ["ride"],
                 "availability": "dependent"
             },
-            FamilyMember.WESTON: {
-                "name": "Weston",
-                "calendar": "Weston",
+            FamilyMember.MEMBER_5: {
+                "name": "Family Member 5",
+                "calendar": "Family Member 5",
                 "transportation": ["ride"],
                 "availability": "dependent"
             }
