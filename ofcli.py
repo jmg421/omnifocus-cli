@@ -330,6 +330,37 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+# Create command groups for reorganized CLI
+of_app = typer.Typer(
+    name="of",
+    help="OmniFocus tasks, projects, and database operations.",
+    no_args_is_help=True,
+)
+
+calendar_app = typer.Typer(
+    name="calendar",
+    help="Apple Calendar (EventKit) integration and management.",
+    no_args_is_help=True,
+)
+
+search_app = typer.Typer(
+    name="search",
+    help="Unified search across OmniFocus, Calendar, and reference data.",
+    no_args_is_help=True,
+)
+
+en_app = typer.Typer(
+    name="en",
+    help="Evernote integration and synchronization.",
+    no_args_is_help=True,
+)
+
+# Register command groups
+app.add_typer(of_app, name="of")
+app.add_typer(calendar_app, name="calendar")
+app.add_typer(search_app, name="search")
+app.add_typer(en_app, name="en")
+
 # Use direct imports from existing directories
 from .commands.add_command import handle_add, handle_add_detailed_task, handle_create_project
 from .commands.list_command import handle_list, handle_list_live_tasks_in_project, handle_list_live_projects
@@ -349,7 +380,7 @@ from .commands.applescript_calendar_integration import handle_applescript_calend
 from .commands.next_command import handle_next
 from .commands.archive_command import handle_archive_completed
 
-@app.command("add")
+@of_app.command("add")
 def add(
     title: str = typer.Option(..., "--title", "-t", help="Title of the new task."),
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project to place the task in."),
@@ -357,7 +388,7 @@ def add(
     due: Optional[str] = typer.Option(None, "--due", "-d", help="Due date/time (natural language or YYYY-MM-DD)."),
     duration: Optional[int] = typer.Option(None, "--duration", "-D", help="Estimated duration in minutes."),
 ):
-    """Quick add a new task to OmniFocus (alias for add-task)."""
+    """Quick add a new task to OmniFocus."""
     args = type('Args', (), {
         'title': title,
         'folder_name': None,
@@ -371,7 +402,33 @@ def add(
     })
     handle_add_detailed_task(args)
 
-@app.command("add-task")
+# DEPRECATED: Root command for backwards compatibility
+@app.command("add", deprecated=True)
+def add_deprecated(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the new task."),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project to place the task in."),
+    note: Optional[str] = typer.Option(None, "--note", "-n", help="Optional note."),
+    due: Optional[str] = typer.Option(None, "--due", "-d", help="Due date/time (natural language or YYYY-MM-DD)."),
+    duration: Optional[int] = typer.Option(None, "--duration", "-D", help="Estimated duration in minutes."),
+):
+    """DEPRECATED: Use 'of add' instead."""
+    import warnings
+    warnings.warn("Command 'add' is deprecated. Use 'of add' instead.", DeprecationWarning, stacklevel=2)
+    args = type('Args', (), {
+        'title': title,
+        'folder_name': None,
+        'project_name': project,
+        'note': note,
+        'tags': None,
+        'due_date': due,
+        'defer_date': None,
+        'recurrence_rule': None,
+        'duration': duration
+    })
+    handle_add_detailed_task(args)
+
+# Alias for detailed add under 'of' group  
+@of_app.command("add-task")
 def add_detailed_task_command(
     title: str = typer.Option(..., "--title", "-t", help="Title of the new task."),
     folder_name: Optional[str] = typer.Option(None, "--folder", "-f", help="Folder to place the task in (cannot be used with --project)."),
@@ -400,7 +457,39 @@ def add_detailed_task_command(
     })
     handle_add_detailed_task(args)
 
-@app.command("list")
+# DEPRECATED: Root command for backwards compatibility
+@app.command("add-task", deprecated=True)
+def add_detailed_task_deprecated(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the new task."),
+    folder_name: Optional[str] = typer.Option(None, "--folder", "-f", help="Folder to place the task in (cannot be used with --project)."),
+    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="Project to place the task in (cannot be used with --folder)."),
+    note: Optional[str] = typer.Option(None, "--note", "-n", help="Optional note for the task."),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags to assign to the task."),
+    due_date: Optional[str] = typer.Option(None, "--due", help="Due date (natural language or YYYY-MM-DD). Needed for some recurrence rules."),
+    defer_date: Optional[str] = typer.Option(None, "--defer", help="Defer date (natural language or YYYY-MM-DD)."),
+    recurrence_rule: Optional[str] = typer.Option(None, "--recurrence", "-r", help='Recurrence rule string (e.g., "FREQ=MONTHLY;INTERVAL=1").'),
+    duration: Optional[int] = typer.Option(None, "--duration", "-D", help="Estimated duration in minutes."),
+):
+    """DEPRECATED: Use 'of add-task' instead."""
+    import warnings
+    warnings.warn("Command 'add-task' is deprecated. Use 'of add-task' instead.", DeprecationWarning, stacklevel=2)
+    if project_name and folder_name:
+        print("Error: --project and --folder cannot be used together", file=sys.stderr)
+        raise typer.Exit(code=1)
+    args = type('Args', (), {
+        'title': title,
+        'folder_name': folder_name,
+        'project_name': project_name,
+        'note': note,
+        'tags': tags,
+        'due_date': due_date,
+        'defer_date': defer_date,
+        'recurrence_rule': recurrence_rule,
+        'duration': duration
+    })
+    handle_add_detailed_task(args)
+
+@of_app.command("list")
 def list_tasks(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Filter tasks by project."),
     search: Optional[str] = typer.Option(None, "--search", "-s", help="Search for tasks containing text."),
@@ -423,11 +512,49 @@ def list_tasks(
         for t in tasks:
             print(f"- {t.get('name')} (Project: {data['projects_map'].get(t.get('projectId'), {}).get('name', 'None')}){' [FLAGGED]' if t.get('flagged') else ''}{' [DUE: ' + t.get('dueDate') + ']' if t.get('dueDate') else ''}")
 
-@app.command("complete")
+@of_app.command("complete")
 def complete(
     task_ids: list[str] = typer.Argument(..., help="One or more task IDs to complete."),
 ):
     """Mark tasks as complete in OmniFocus."""
+    args = type('Args', (), {
+        'task_id': task_ids
+    })
+    handle_complete(args)
+
+# DEPRECATED: Root commands for backwards compatibility
+@app.command("list", deprecated=True)
+def list_tasks_deprecated(
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Filter tasks by project."),
+    search: Optional[str] = typer.Option(None, "--search", "-s", help="Search for tasks containing text."),
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format."),
+    file: Optional[str] = typer.Option(get_latest_json_export_path(), "--file", help="Path to the OmniFocus JSON export file.")
+):
+    """DEPRECATED: Use 'of list' instead."""
+    import warnings
+    warnings.warn("Command 'list' is deprecated. Use 'of list' instead.", DeprecationWarning, stacklevel=2)
+    data = load_and_prepare_omnifocus_data(file)
+    tasks = data.get('all_tasks', [])
+    # Filter by project if specified
+    if project:
+        tasks = [t for t in tasks if t.get('projectId') and data['projects_map'].get(t['projectId'], {}).get('name') == project]
+    # Filter by search if specified
+    if search:
+        tasks = [t for t in tasks if search.lower() in t.get('name', '').lower() or search.lower() in t.get('note', '').lower()]
+    if json_output:
+        import json
+        print(json.dumps(tasks, indent=2))
+    else:
+        for t in tasks:
+            print(f"- {t.get('name')} (Project: {data['projects_map'].get(t.get('projectId'), {}).get('name', 'None')}){' [FLAGGED]' if t.get('flagged') else ''}{' [DUE: ' + t.get('dueDate') + ']' if t.get('dueDate') else ''}")
+
+@app.command("complete", deprecated=True)
+def complete_deprecated(
+    task_ids: list[str] = typer.Argument(..., help="One or more task IDs to complete."),
+):
+    """DEPRECATED: Use 'of complete' instead."""
+    import warnings
+    warnings.warn("Command 'complete' is deprecated. Use 'of complete' instead.", DeprecationWarning, stacklevel=2)
     args = type('Args', (), {
         'task_id': task_ids
     })
@@ -594,7 +721,7 @@ def cleanup(
     })
     handle_cleanup(args)
 
-@app.command("test-evernote")
+@en_app.command("test")
 def test_evernote():
     """Test Evernote integration."""
     if test_evernote_export():
@@ -602,12 +729,48 @@ def test_evernote():
     else:
         print("✗ Failed to test Evernote integration")
 
-@app.command("search")
+# DEPRECATED: Root command for backwards compatibility
+@app.command("test-evernote", deprecated=True)
+def test_evernote_deprecated():
+    """DEPRECATED: Use 'en test' instead."""
+    import warnings
+    warnings.warn("Command 'test-evernote' is deprecated. Use 'en test' instead.", DeprecationWarning, stacklevel=2)
+    if test_evernote_export():
+        print("✓ Successfully tested Evernote integration")
+    else:
+        print("✗ Failed to test Evernote integration")
+
+@search_app.command("query")
 def search(
     query: str = typer.Argument(..., help="Search term to find in task names and notes."),
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Limit search to a specific project."),
+    source: str = typer.Option("of", "--source", help="Data source: 'of' (OmniFocus), 'calendar', 'reference', or 'all'"),
 ):
-    """Search for tasks and display their IDs."""
+    """Search across OmniFocus, Calendar, and reference data."""
+    if source == "of":
+        # Use existing OmniFocus search
+        args = type('Args', (), {
+            'query': query,
+            'project': project
+        })
+        handle_search(args)
+    else:
+        print(f"Search source '{source}' not yet implemented. Using OmniFocus search for now.")
+        args = type('Args', (), {
+            'query': query,
+            'project': project
+        })
+        handle_search(args)
+
+# DEPRECATED: Root command for backwards compatibility
+@app.command("search", deprecated=True)
+def search_deprecated(
+    query: str = typer.Argument(..., help="Search term to find in task names and notes."),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Limit search to a specific project."),
+):
+    """DEPRECATED: Use 'search query' instead."""
+    import warnings
+    warnings.warn("Command 'search' is deprecated. Use 'search query' instead.", DeprecationWarning, stacklevel=2)
     args = type('Args', (), {
         'query': query,
         'project': project
@@ -931,7 +1094,7 @@ def list_live_projects_command(
     args = type("Args", (), {"json_output": json_output})
     handle_list_live_projects(args)
 
-@app.command("add-calendar-event")
+@calendar_app.command("add")
 def add_calendar_event_command(
     title: str = typer.Option(..., "--title", "-t", help="Title of the calendar event."),
     start_date: str = typer.Option(..., "--start-date", help="Start date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
@@ -940,6 +1103,30 @@ def add_calendar_event_command(
     calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to 'John' (iCloud) if not specified.")
 ):
     """Add a new event to Apple Calendar."""
+    # Default to 'John' if calendar_name is not provided
+    if not calendar_name:
+        calendar_name = "John"
+    args = type('Args', (), {
+        'title': title,
+        'start_date': start_date,
+        'end_date': end_date,
+        'notes': notes,
+        'calendar_name': calendar_name
+    })
+    handle_add_calendar_event(args)
+
+# DEPRECATED: Root command for backwards compatibility
+@app.command("add-calendar-event", deprecated=True)
+def add_calendar_event_deprecated(
+    title: str = typer.Option(..., "--title", "-t", help="Title of the calendar event."),
+    start_date: str = typer.Option(..., "--start-date", help="Start date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
+    end_date: str = typer.Option(..., "--end-date", help="End date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
+    notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Optional notes for the event."),
+    calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to 'John' (iCloud) if not specified.")
+):
+    """DEPRECATED: Use 'calendar add' instead."""
+    import warnings
+    warnings.warn("Command 'add-calendar-event' is deprecated. Use 'calendar add' instead.", DeprecationWarning, stacklevel=2)
     # Default to 'John' if calendar_name is not provided
     if not calendar_name:
         calendar_name = "John"
@@ -1849,7 +2036,7 @@ def diagnostics():
         else:
             console.print("✅ No duplicate tasks detected (name+project heuristic)", style="green")
 
-@app.command("ingest")
+@of_app.command("ingest")
 def ingest_command(
     age: int = typer.Option(1800, "--age", "-a", help="Max age (seconds) before triggering a new export."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress subprocess output"),
@@ -2146,26 +2333,44 @@ def emergency_calendar_analysis():
     args = type('Args', (), {})
     handle_emergency_calendar_report(args)
 
-@app.command("calendar-today")
+@calendar_app.command("today")
 def calendar_today():
     """Show today's calendar events using EventKit (FAST - no timeouts)."""
     from .commands.eventkit_calendar_command import handle_eventkit_calendar_today
     args = type('Args', (), {})
     handle_eventkit_calendar_today(args)
 
-@app.command("calendar-family") 
-def calendar_family():
-    """Show family calendar events using EventKit (FAST - no timeouts)."""
-    from .commands.eventkit_calendar_command import handle_eventkit_family_events
-    args = type('Args', (), {})
-    handle_eventkit_family_events(args)
-
-@app.command("calendar-conflicts")
+@calendar_app.command("conflicts")
 def calendar_conflicts(
     start_time: str = typer.Option(..., "--start", "-s", help="Start time (YYYY-MM-DD HH:MM)"),
     end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
 ):
     """Check for calendar conflicts using EventKit (FAST - no timeouts)."""
+    from .commands.eventkit_calendar_command import handle_eventkit_calendar_conflicts
+    args = type('Args', (), {
+        'start_time': start_time,
+        'end_time': end_time
+    })
+    handle_eventkit_calendar_conflicts(args)
+
+# DEPRECATED: Root calendar commands for backwards compatibility
+@app.command("calendar-today", deprecated=True)
+def calendar_today_deprecated():
+    """DEPRECATED: Use 'calendar today' instead."""
+    import warnings
+    warnings.warn("Command 'calendar-today' is deprecated. Use 'calendar today' instead.", DeprecationWarning, stacklevel=2)
+    from .commands.eventkit_calendar_command import handle_eventkit_calendar_today
+    args = type('Args', (), {})
+    handle_eventkit_calendar_today(args)
+
+@app.command("calendar-conflicts", deprecated=True)
+def calendar_conflicts_deprecated(
+    start_time: str = typer.Option(..., "--start", "-s", help="Start time (YYYY-MM-DD HH:MM)"),
+    end_time: str = typer.Option(..., "--end", "-e", help="End time (YYYY-MM-DD HH:MM)"),
+):
+    """DEPRECATED: Use 'calendar conflicts' instead."""
+    import warnings
+    warnings.warn("Command 'calendar-conflicts' is deprecated. Use 'calendar conflicts' instead.", DeprecationWarning, stacklevel=2)
     from .commands.eventkit_calendar_command import handle_eventkit_calendar_conflicts
     args = type('Args', (), {
         'start_time': start_time,
