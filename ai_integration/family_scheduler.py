@@ -134,27 +134,27 @@ class FamilyScheduler:
         self.known_locations = {
             "home": Location(
                 name="Home",
-                address="5716 Ludington Drive, Lewis Center, OH 43035",
+                address="[HOME_ADDRESS]",
                 travel_time_from_home=0
             ),
-            "crash_champions": Location(
-                name="Crash Champions",
-                address="10130 Columbus Pike, Lewis Center, OH 43035", 
+            "repair_shop": Location(
+                name="Repair Shop",
+                address="[REPAIR_SHOP_ADDRESS]", 
                 travel_time_from_home=10
             ),
-            "kroger": Location(
-                name="Kroger",
-                address="Lewis Center, OH",
+            "grocery_store": Location(
+                name="Grocery Store",
+                address="[GROCERY_STORE_ADDRESS]",
                 travel_time_from_home=15
             ),
-            "baltimore_softball": Location(
-                name="Baltimore Softball Complex",
-                address="1101 N Romulus St, Baltimore, OH",
+            "sports_complex": Location(
+                name="Sports Complex",
+                address="[SPORTS_COMPLEX_ADDRESS]",
                 travel_time_from_home=90
             ),
-            "mount_carmel": Location(
-                name="Mount Carmel Fitness Center",
-                address="Mount Carmel Fitness Center",
+            "fitness_center": Location(
+                name="Fitness Center",
+                address="[FITNESS_CENTER_ADDRESS]",
                 travel_time_from_home=20
             )
         }
@@ -546,11 +546,11 @@ def analyze_family_scheduling(title: str, description: str, date_str: str,
 if __name__ == "__main__":
     # Example usage
     analysis = analyze_family_scheduling(
-        title="Evan Car Repair",
-        description="Drop off Evan's car at Crash Champions for repair",
+        title="Car Repair",
+        description="Drop off car at repair shop",
         date_str="2025-07-19",
-        location_name="crash_champions",
-        attendees=["Evan"],
+        location_name="repair_shop",
+        attendees=["Family Member 1"],
         duration_minutes=30
     )
     

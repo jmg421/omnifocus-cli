@@ -172,11 +172,11 @@ class CalendarAnalyzer:
         # For now, return estimated times based on known locations
         
         known_locations = {
-            "Lewis Center, OH": {
-                "Baltimore, OH": 90,  # ~1.5 hours
-                "Crash Champions - 10130 Columbus Pike, Lewis Center, OH": 10,
-                "Kroger": 15,
-                "Mount Carmel Fitness Center": 20
+            "Home Area": {
+                "Sports Tournament Area": 90,  # ~1.5 hours
+                "Repair Shop": 10,
+                "Grocery Store": 15,
+                "Fitness Center": 20
             }
         }
         
@@ -191,16 +191,16 @@ class CalendarAnalyzer:
     
     def _extract_area(self, location: str) -> str:
         """Extract area/city from location string."""
-        if "Baltimore" in location:
-            return "Baltimore, OH"
-        elif "Lewis Center" in location:
-            return "Lewis Center, OH"
-        elif "Crash Champions" in location:
-            return "Crash Champions - 10130 Columbus Pike, Lewis Center, OH"
-        elif "Kroger" in location:
-            return "Kroger"
-        elif "Mount Carmel" in location:
-            return "Mount Carmel Fitness Center"
+        if "tournament" in location.lower():
+            return "Sports Tournament Area"
+        elif "home" in location.lower():
+            return "Home Area"
+        elif "repair" in location.lower():
+            return "Repair Shop"
+        elif "grocery" in location.lower():
+            return "Grocery Store"
+        elif "fitness" in location.lower():
+            return "Fitness Center"
         return location
     
     def _suggest_overlap_solutions(self, conflict: SchedulingConflict) -> List[SchedulingSolution]:
@@ -345,7 +345,7 @@ if __name__ == "__main__":
     # Example usage
     scenario = analyze_scheduling_scenario(
         "2025-07-19",  # Saturday
-        "Evan car repair at Crash Champions while Grace has softball tournament in Baltimore"
+        "Car repair appointment while family member has sports tournament"
     )
     
     print(json.dumps(scenario, indent=2, default=str)) 

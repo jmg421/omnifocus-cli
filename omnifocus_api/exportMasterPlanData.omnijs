@@ -1,5 +1,5 @@
 /*{
-    "author": "John Muirhead-Gould",
+    "author": "OmniFocus CLI",
     "targets": ["omnifocus"],
     "type": "action",
     "identifier": "com.jmg.exportomnifocus.v11.final",
@@ -538,8 +538,8 @@
                         t.name.toLowerCase().includes('advocacy') ||
                         t.hasChildren
                     ),
-                    westonHealingItems: flaggedTasks.filter(t => 
-                        t.projectName && t.projectName.toLowerCase().includes('weston healing')
+                    familyMember5HealingItems: flaggedTasks.filter(t => 
+                        t.projectName && t.projectName.toLowerCase().includes('family member 5 healing')
                     ),
                     projectManagement: flaggedTasks.filter(t =>
                         t.name.toLowerCase().includes('review') ||
@@ -560,7 +560,7 @@
                         overdueItems: categories.overdueItems.length,
                         dueTodayItems: categories.dueTodayItems.length,
                         referenceCategories: categories.referenceCategories.length,
-                        westonHealingItems: categories.westonHealingItems.length,
+                        familyMember5HealingItems: categories.familyMember5HealingItems.length,
                         inboxItems: categories.inboxItems.length,
                     },
                     flaggedTasks: flaggedTasks,
@@ -632,8 +632,8 @@
                         }
 
                         console.log(`  - Folder: '${folder.name}' (ID: ${folder.id.primaryKey}), ${parentInfo}`);
-                        if (folder.id.primaryKey === "iEhR4VGgGbp") { // John's ID
-                             console.log(`    *** THIS IS THE 'John' FOLDER (ID iEhR4VGgGbp) as seen in flattenedFolders ***`);
+                        if (folder.id.primaryKey === "iEhR4VGgGbp") { // Family Member 1's ID
+    console.log(`    *** THIS IS THE 'Family Member 1' FOLDER (ID iEhR4VGgGbp) as seen in flattenedFolders ***`);
                         }
                         if (folder.id.primaryKey === "amGxjZLKRBV") { // Family's ID
                              console.log(`    *** THIS IS THE 'Family' FOLDER (ID amGxjZLKRBV) as seen in flattenedFolders ***`);

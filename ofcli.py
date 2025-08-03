@@ -937,12 +937,12 @@ def add_calendar_event_command(
     start_date: str = typer.Option(..., "--start-date", help="Start date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
     end_date: str = typer.Option(..., "--end-date", help="End date/time (YYYY-MM-DD or YYYY-MM-DD HH:MM)."),
     notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Optional notes for the event."),
-    calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to 'John' (iCloud) if not specified.")
+    calendar_name: Optional[str] = typer.Option(None, "--calendar", "-c", help="Name of the calendar to add the event to (e.g., 'Home', 'Work'). Defaults to 'Family Member 1' (iCloud) if not specified.")
 ):
     """Add a new event to Apple Calendar."""
-    # Default to 'John' if calendar_name is not provided
+    # Default to 'Family Member 1' if calendar_name is not provided
     if not calendar_name:
-        calendar_name = "John"
+        calendar_name = "Family Member 1"
     args = type('Args', (), {
         'title': title,
         'start_date': start_date,
@@ -3056,12 +3056,7 @@ def bulk_create_from_csv_command(
         for failed in failed_tasks:
             print(f"  - {failed}")
 
-@app.command("clear-cache")
-def clear_cache_command():
-    """Clear the export cache and force a fresh export on next command."""
-    from .utils.ensure_export import clear_export_cache
-    clear_export_cache()
-    print("✅ Export cache cleared. Next command will trigger a fresh export if needed.")
+
 
 if __name__ == "__main__":
     app() 

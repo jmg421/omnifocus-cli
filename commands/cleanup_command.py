@@ -140,10 +140,10 @@ def get_auto_routing_project(task, available_projects):
             if 'family member 5' in proj.lower():
                 return proj
     
-    # Weston related tasks
-    if any(word in task_name or word in task_note for word in ['weston', 'basketball', 'healing']):
+    # Family Member 5 related tasks
+    if any(word in task_name or word in task_note for word in ['family member 5', 'basketball', 'healing']):
         for proj in available_projects:
-            if 'weston' in proj.lower():
+            if 'family member 5' in proj.lower():
                 return proj
     
     # Family/Parenting related tasks

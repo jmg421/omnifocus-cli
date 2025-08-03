@@ -6,7 +6,7 @@ This directory is used by OFCLI for local data storage and caching.
 
 - `examples/` - Sample data files showing expected JSON formats
 - `omnifocus.sqlite` - Local SQLite database for advanced querying (created automatically)
-- `export_cache.json` - Cache file for OmniFocus export optimization (created automatically)
+
 
 ## Usage
 
